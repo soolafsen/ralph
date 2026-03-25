@@ -106,6 +106,63 @@ function defaultPrdOutputPath(baseDir, request) {
   return path.join(baseDir, ".agents", "tasks");
 }
 
+function toBashPath(value) {
+  if (typeof value !== "string" || value.length === 0) return value;
+  const normalized = value.replace(/\\/g, "/");
+  if (/^[A-Za-z]:\//.test(normalized)) {
+    return `/${normalized[0].toLowerCase()}${normalized.slice(2)}`;
+  }
+  return normalized;
+}
+
+function resolveBashExecutable() {
+  if (process.platform !== "win32") return "bash";
+  const candidates = [
+    path.join(process.env.ProgramFiles || "C:\\Program Files", "Git", "bin", "bash.exe"),
+    path.join(process.env.ProgramFiles || "C:\\Program Files", "Git", "usr", "bin", "bash.exe"),
+    path.join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Git", "bin", "bash.exe"),
+    path.join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Git", "usr", "bin", "bash.exe"),
+  ];
+  for (const candidate of candidates) {
+    if (exists(candidate)) return candidate;
+  }
+  return "bash";
+}
+
+function runLoop(loopPath, loopArgs, options) {
+  if (process.platform === "win32") {
+    const loopPathKeys = new Set([
+      "RALPH_ROOT",
+      "PRD_PATH",
+      "PROGRESS_PATH",
+      "AGENTS_PATH",
+      "PROMPT_BUILD",
+      "GUARDRAILS_PATH",
+      "ERRORS_LOG_PATH",
+      "ACTIVITY_LOG_PATH",
+      "TMP_DIR",
+      "RUNS_DIR",
+      "GUARDRAILS_REF",
+      "CONTEXT_REF",
+      "ACTIVITY_CMD",
+    ]);
+    const bashArgs = [
+      toBashPath(loopPath),
+      ...loopArgs.map((arg) => (typeof arg === "string" && /^[A-Za-z]:[\\/]/.test(arg) ? toBashPath(arg) : arg)),
+    ];
+    const env = options && options.env
+      ? Object.fromEntries(
+          Object.entries(options.env).map(([key, value]) => [
+            key,
+            loopPathKeys.has(key) && typeof value === "string" ? toBashPath(value) : value,
+          ]),
+        )
+      : options?.env;
+    return spawnSync(resolveBashExecutable(), bashArgs, { ...options, env });
+  }
+  return spawnSync(loopPath, loopArgs, options);
+}
+
 async function resolvePrdPath({ cwd, explicitPath, label }) {
   if (explicitPath) {
     return path.resolve(cwd, explicitPath);
@@ -517,7 +574,7 @@ async function main() {
       env.PRD_AGENT_CMD = prdAgent;
     }
     const prdArgs = ["prd", "--prompt", requestFile];
-    const result = spawnSync(loopPath, prdArgs, {
+    const result = runLoop(loopPath, prdArgs, {
       stdio: "inherit",
       env,
     });
@@ -596,7 +653,7 @@ async function main() {
     env.PRD_PATH = resolvedPrdPath;
   }
 
-  const result = spawnSync(loopPath, loopArgs, {
+  const result = runLoop(loopPath, loopArgs, {
     stdio: "inherit",
     env,
   });
