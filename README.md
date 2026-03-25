@@ -18,6 +18,7 @@ Compared with the upstream Ralph flow, this fork adds or changes:
 - Windows launcher fixes so `.sh` loop scripts run through **Git Bash** instead of accidentally picking up WSL `bash`
 - Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
 - slimmer build prompts with a compact progress snapshot instead of feeding large context every run
+- compact bundled PRD generation so build runs carry less narrative overhead
 - automatic stale story recovery defaults
 - automatic tiny-task prompting for very small PRDs
 - an explicit `--tiny` flag for build runs
@@ -94,7 +95,7 @@ This fork expects the `prd` skill to work in a **one-shot** flow. The recommende
 
 - do not ask follow-up questions
 - make reasonable assumptions
-- write a deterministic JSON PRD in one run
+- write a deterministic and compact JSON PRD in one run
 
 Run one iteration:
 

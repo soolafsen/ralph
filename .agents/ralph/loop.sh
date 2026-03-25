@@ -38,7 +38,7 @@ fi
 DEFAULT_MAX_ITERATIONS=25
 DEFAULT_NO_COMMIT=false
 DEFAULT_STALE_SECONDS=300
-DEFAULT_PROGRESS_TAIL_LINES=40
+DEFAULT_PROGRESS_TAIL_LINES=20
 DEFAULT_TINY_TASK_STORY_MAX=3
 PRD_REQUEST_PATH=""
 PRD_INLINE=""
@@ -414,24 +414,47 @@ PY
 
 build_progress_context() {
   local dst="$1"
-  python3 - "$PROGRESS_PATH" "$dst" "$PROGRESS_TAIL_LINES" <<'PY'
+  local tiny_mode="${2:-false}"
+  python3 - "$PROGRESS_PATH" "$dst" "$PROGRESS_TAIL_LINES" "$tiny_mode" <<'PY'
 import sys
 from pathlib import Path
 
 src = Path(sys.argv[1])
 dst = Path(sys.argv[2])
 tail = int(sys.argv[3]) if len(sys.argv) > 3 else 40
+tiny_mode = sys.argv[4] if len(sys.argv) > 4 else "false"
+
+if tiny_mode == "true":
+    dst.write_text("# Progress Snapshot\n\n(skip for tiny task)\n")
+    sys.exit(0)
 
 if not src.exists():
     dst.write_text("# Progress Snapshot\n\n(none)\n")
     sys.exit(0)
 
 lines = src.read_text(encoding="utf-8").splitlines()
-if tail > 0:
-    lines = lines[-tail:]
-text = "\n".join(lines).strip()
+
+entries = []
+current = []
+for line in lines:
+    if line.startswith("## "):
+        if current:
+            entries.append(current)
+        current = [line]
+    elif current:
+        current.append(line)
+if current:
+    entries.append(current)
+
+if entries:
+    selected = entries[-2:]
+    text = "\n\n".join("\n".join(entry).strip() for entry in selected if entry).strip()
+else:
+    text = "\n".join(lines[-tail:]).strip() if tail > 0 else ""
+
 if not text:
     text = "(none)"
+
 dst.write_text(f"# Progress Snapshot\n\n{text}\n", encoding="utf-8")
 PY
 }
@@ -568,16 +591,13 @@ with prd_path.open("r+", encoding="utf-8") as fh:
 
             description = candidate.get("description") or ""
             block_lines = []
-            block_lines.append(f"### {candidate.get('id', '')}: {candidate.get('title', '')}")
-            block_lines.append(f"Status: {candidate.get('status', 'open')}")
-            block_lines.append(
-                f"Depends on: {', '.join(depends) if depends else 'None'}"
-            )
+            block_lines.append(f"Story: {candidate.get('id', '')} - {candidate.get('title', '')}")
+            block_lines.append(f"Depends on: {', '.join(depends) if depends else 'None'}")
             block_lines.append("")
             block_lines.append("Description:")
             block_lines.append(description if description else "(none)")
             block_lines.append("")
-            block_lines.append("Acceptance Criteria:")
+            block_lines.append("Acceptance:")
             if acceptance:
                 block_lines.extend([f"- [ ] {item}" for item in acceptance])
             else:
@@ -919,13 +939,13 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   PROGRESS_CONTEXT="$TMP_DIR/progress-$RUN_TAG-$i.md"
   LOG_FILE="$RUNS_DIR/run-$RUN_TAG-iter-$i.log"
   RUN_META="$RUNS_DIR/run-$RUN_TAG-iter-$i.md"
-  build_progress_context "$PROGRESS_CONTEXT"
   TINY_TASK_MODE="false"
   if [ "$MODE" = "build" ] && [ -n "$TINY_TASK_MODE_OVERRIDE" ]; then
     TINY_TASK_MODE="$TINY_TASK_MODE_OVERRIDE"
   elif [ "$MODE" = "build" ]; then
     TINY_TASK_MODE="$(tiny_task_mode_from_meta "$STORY_META")"
   fi
+  build_progress_context "$PROGRESS_CONTEXT" "$TINY_TASK_MODE"
   render_prompt "$PROMPT_FILE" "$PROMPT_RENDERED" "$STORY_META" "$STORY_BLOCK" "$PROGRESS_CONTEXT" "$TINY_TASK_MODE" "$RUN_TAG" "$i" "$LOG_FILE" "$RUN_META"
 
   if [ "$MODE" = "build" ] && [ -n "${STORY_ID:-}" ]; then
