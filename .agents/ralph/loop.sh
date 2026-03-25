@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ralph loop â€” simple, portable, single-agent
+# Ralph loop - simple, portable, single-agent
 # Usage:
 #   ./.agents/ralph/loop.sh                 # build mode, default iterations
 #   ./.agents/ralph/loop.sh build           # build mode
@@ -884,9 +884,9 @@ HAS_ERROR="false"
 
 for i in $(seq 1 "$MAX_ITERATIONS"); do
   echo ""
-  echo "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•"
+  echo "-------------------------------------------------------"
   echo "  Ralph Iteration $i of $MAX_ITERATIONS"
-  echo "â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•"
+  echo "-------------------------------------------------------"
 
   STORY_META=""
   STORY_BLOCK=""
