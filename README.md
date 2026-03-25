@@ -39,9 +39,18 @@ If your system resolves `bash` to WSL first, that is fine: Ralph will prefer Git
 
 ## Install
 
-Install directly from this fork:
+`@soolafsen/ralph` is not currently published on the npm registry.
+
+Install it directly from this GitHub repository:
 
 ```bash
+npm i -g github:soolafsen/ralph#main
+```
+
+If you already have an older global install, refresh it with:
+
+```bash
+npm uninstall -g @soolafsen/ralph
 npm i -g github:soolafsen/ralph#main
 ```
 
