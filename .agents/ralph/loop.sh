@@ -1,5 +1,5 @@
 #!/bin/bash
-# Ralph loop — simple, portable, single-agent
+# Ralph loop - simple, portable, single-agent
 # Usage:
 #   ./.agents/ralph/loop.sh                 # build mode, default iterations
 #   ./.agents/ralph/loop.sh build           # build mode
@@ -37,7 +37,9 @@ fi
 
 DEFAULT_MAX_ITERATIONS=25
 DEFAULT_NO_COMMIT=false
-DEFAULT_STALE_SECONDS=0
+DEFAULT_STALE_SECONDS=300
+DEFAULT_PROGRESS_TAIL_LINES=40
+DEFAULT_TINY_TASK_STORY_MAX=3
 PRD_REQUEST_PATH=""
 PRD_INLINE=""
 
@@ -83,6 +85,8 @@ AGENT_CMD="${AGENT_CMD:-$DEFAULT_AGENT_CMD}"
 MAX_ITERATIONS="${MAX_ITERATIONS:-$DEFAULT_MAX_ITERATIONS}"
 NO_COMMIT="${NO_COMMIT:-$DEFAULT_NO_COMMIT}"
 STALE_SECONDS="${STALE_SECONDS:-$DEFAULT_STALE_SECONDS}"
+PROGRESS_TAIL_LINES="${PROGRESS_TAIL_LINES:-$DEFAULT_PROGRESS_TAIL_LINES}"
+TINY_TASK_STORY_MAX="${TINY_TASK_STORY_MAX:-$DEFAULT_TINY_TASK_STORY_MAX}"
 
 abs_path() {
   local p="$1"
@@ -346,41 +350,36 @@ render_prompt() {
   local dst="$2"
   local story_meta="$3"
   local story_block="$4"
-  local run_id="$5"
-  local iter="$6"
-  local run_log="$7"
-  local run_meta="$8"
-  python3 - "$src" "$dst" "$PRD_PATH" "$AGENTS_PATH" "$PROGRESS_PATH" "$ROOT_DIR" "$GUARDRAILS_PATH" "$ERRORS_LOG_PATH" "$ACTIVITY_LOG_PATH" "$GUARDRAILS_REF" "$CONTEXT_REF" "$ACTIVITY_CMD" "$NO_COMMIT" "$story_meta" "$story_block" "$run_id" "$iter" "$run_log" "$run_meta" <<'PY'
+  local progress_context="$5"
+  local tiny_task_mode="$6"
+  local run_id="$7"
+  local iter="$8"
+  local run_log="$9"
+  local run_meta="${10}"
+  python3 - "$src" "$dst" "$PRD_PATH" "$AGENTS_PATH" "$PROGRESS_PATH" "$progress_context" "$ROOT_DIR" "$ERRORS_LOG_PATH" "$NO_COMMIT" "$tiny_task_mode" "$story_meta" "$story_block" "$run_id" "$iter" "$run_log" "$run_meta" <<'PY'
 import sys
 from pathlib import Path
 
 src = Path(sys.argv[1]).read_text()
-prd, agents, progress, root = sys.argv[3:7]
-guardrails = sys.argv[7]
+prd, agents, progress, progress_context, root = sys.argv[3:8]
 errors_log = sys.argv[8]
-activity_log = sys.argv[9]
-guardrails_ref = sys.argv[10]
-context_ref = sys.argv[11]
-activity_cmd = sys.argv[12]
-no_commit = sys.argv[13]
-meta_path = sys.argv[14] if len(sys.argv) > 14 else ""
-block_path = sys.argv[15] if len(sys.argv) > 15 else ""
-run_id = sys.argv[16] if len(sys.argv) > 16 else ""
-iteration = sys.argv[17] if len(sys.argv) > 17 else ""
-run_log = sys.argv[18] if len(sys.argv) > 18 else ""
-run_meta = sys.argv[19] if len(sys.argv) > 19 else ""
+no_commit = sys.argv[9]
+tiny_task_mode = sys.argv[10]
+meta_path = sys.argv[11] if len(sys.argv) > 11 else ""
+block_path = sys.argv[12] if len(sys.argv) > 12 else ""
+run_id = sys.argv[13] if len(sys.argv) > 13 else ""
+iteration = sys.argv[14] if len(sys.argv) > 14 else ""
+run_log = sys.argv[15] if len(sys.argv) > 15 else ""
+run_meta = sys.argv[16] if len(sys.argv) > 16 else ""
 repl = {
     "PRD_PATH": prd,
     "AGENTS_PATH": agents,
     "PROGRESS_PATH": progress,
+    "PROGRESS_CONTEXT_PATH": progress_context,
     "REPO_ROOT": root,
-    "GUARDRAILS_PATH": guardrails,
     "ERRORS_LOG_PATH": errors_log,
-    "ACTIVITY_LOG_PATH": activity_log,
-    "GUARDRAILS_REF": guardrails_ref,
-    "CONTEXT_REF": context_ref,
-    "ACTIVITY_CMD": activity_cmd,
     "NO_COMMIT": no_commit,
+    "TINY_TASK_MODE": tiny_task_mode,
     "RUN_ID": run_id,
     "ITERATION": iteration,
     "RUN_LOG_PATH": run_log,
@@ -409,6 +408,30 @@ else:
 for k, v in repl.items():
     src = src.replace("{{" + k + "}}", v)
 Path(sys.argv[2]).write_text(src)
+PY
+}
+
+build_progress_context() {
+  local dst="$1"
+  python3 - "$PROGRESS_PATH" "$dst" "$PROGRESS_TAIL_LINES" <<'PY'
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+tail = int(sys.argv[3]) if len(sys.argv) > 3 else 40
+
+if not src.exists():
+    dst.write_text("# Progress Snapshot\n\n(none)\n")
+    sys.exit(0)
+
+lines = src.read_text(encoding="utf-8").splitlines()
+if tail > 0:
+    lines = lines[-tail:]
+text = "\n".join(lines).strip()
+if not text:
+    text = "(none)"
+dst.write_text(f"# Progress Snapshot\n\n{text}\n", encoding="utf-8")
 PY
 }
 
@@ -637,6 +660,20 @@ print(data.get(field, ""))
 PY
 }
 
+tiny_task_mode_from_meta() {
+  local meta_file="$1"
+  python3 - "$meta_file" "$TINY_TASK_STORY_MAX" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+data = json.loads(Path(sys.argv[1]).read_text())
+threshold = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+total = data.get("total", threshold + 1)
+print("true" if isinstance(total, int) and total <= threshold else "false")
+PY
+}
+
 update_story_status() {
   local story_id="$1"
   local new_status="$2"
@@ -847,9 +884,9 @@ HAS_ERROR="false"
 
 for i in $(seq 1 "$MAX_ITERATIONS"); do
   echo ""
-  echo "═══════════════════════════════════════════════════════"
+  echo "-------------------------------------------------------"
   echo "  Ralph Iteration $i of $MAX_ITERATIONS"
-  echo "═══════════════════════════════════════════════════════"
+  echo "-------------------------------------------------------"
 
   STORY_META=""
   STORY_BLOCK=""
@@ -878,9 +915,15 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
 
   HEAD_BEFORE="$(git_head)"
   PROMPT_RENDERED="$TMP_DIR/prompt-$RUN_TAG-$i.md"
+  PROGRESS_CONTEXT="$TMP_DIR/progress-$RUN_TAG-$i.md"
   LOG_FILE="$RUNS_DIR/run-$RUN_TAG-iter-$i.log"
   RUN_META="$RUNS_DIR/run-$RUN_TAG-iter-$i.md"
-  render_prompt "$PROMPT_FILE" "$PROMPT_RENDERED" "$STORY_META" "$STORY_BLOCK" "$RUN_TAG" "$i" "$LOG_FILE" "$RUN_META"
+  build_progress_context "$PROGRESS_CONTEXT"
+  TINY_TASK_MODE="false"
+  if [ "$MODE" = "build" ]; then
+    TINY_TASK_MODE="$(tiny_task_mode_from_meta "$STORY_META")"
+  fi
+  render_prompt "$PROMPT_FILE" "$PROMPT_RENDERED" "$STORY_META" "$STORY_BLOCK" "$PROGRESS_CONTEXT" "$TINY_TASK_MODE" "$RUN_TAG" "$i" "$LOG_FILE" "$RUN_META"
 
   if [ "$MODE" = "build" ] && [ -n "${STORY_ID:-}" ]; then
     log_activity "ITERATION $i start (mode=$MODE story=$STORY_ID)"
