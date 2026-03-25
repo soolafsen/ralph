@@ -111,9 +111,14 @@ function defaultPrdOutputPath(baseDir, request) {
 }
 
 function findPlanCandidates(baseDir) {
-  return ["cursor-plan.md", "plan.md"]
+  const explicit = ["cursor-plan.md", "plan.md"]
     .map((name) => path.join(baseDir, name))
     .filter((candidate) => exists(candidate));
+  const globbed = fs
+    .readdirSync(baseDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".plan.md"))
+    .map((entry) => path.join(baseDir, entry.name));
+  return Array.from(new Set([...explicit, ...globbed]));
 }
 
 function toBashPath(value) {

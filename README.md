@@ -96,6 +96,7 @@ Use an existing plan file directly:
 ```bash
 ralph prd --plan cursor-plan.md
 ralph prd --plan plan.md
+ralph prd --plan print_foo_greenfield.plan.md
 ```
 
 This fork expects the `prd` skill to work in a **one-shot** flow. The recommended skill behavior is:
@@ -108,6 +109,7 @@ If you run `ralph prd` with no inline request and no `--plan`, Ralph will look f
 
 - `cursor-plan.md`
 - `plan.md`
+- any `*.plan.md` file in the current repo root
 
 If one or more of those files exist in the current repo, Ralph will offer to use one of them before falling back to manual entry.
 
