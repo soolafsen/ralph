@@ -18,6 +18,7 @@ Compared with the upstream Ralph flow, this fork adds or changes:
 - Windows launcher fixes so `.sh` loop scripts run through **Git Bash** instead of accidentally picking up WSL `bash`
 - Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
 - slimmer build prompts with a compact progress snapshot instead of feeding large context every run
+- compact bundled PRD generation so build runs carry less narrative overhead
 - automatic stale story recovery defaults
 - automatic tiny-task prompting for very small PRDs
 - an explicit `--tiny` flag for build runs
@@ -90,11 +91,27 @@ Create a PRD:
 ralph prd
 ```
 
+Use an existing plan file directly:
+
+```bash
+ralph prd --plan cursor-plan.md
+ralph prd --plan plan.md
+ralph prd --plan print_foo_greenfield.plan.md
+```
+
 This fork expects the `prd` skill to work in a **one-shot** flow. The recommended skill behavior is:
 
 - do not ask follow-up questions
 - make reasonable assumptions
-- write a deterministic JSON PRD in one run
+- write a deterministic and compact JSON PRD in one run
+
+If you run `ralph prd` with no inline request and no `--plan`, Ralph will look for:
+
+- `cursor-plan.md`
+- `plan.md`
+- any `*.plan.md` file in the current repo root
+
+If one or more of those files exist in the current repo, Ralph will offer to use one of them before falling back to manual entry.
 
 Run one iteration:
 

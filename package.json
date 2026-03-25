@@ -1,5 +1,5 @@
 {
-  "name": "@iannuttall/ralph",
+  "name": "@soolafsen/ralph",
   "version": "0.1.3",
   "description": "Minimal, file-based agent loop for autonomous coding.",
   "bin": {
