@@ -89,6 +89,7 @@ STALE_SECONDS="${STALE_SECONDS:-$DEFAULT_STALE_SECONDS}"
 PROGRESS_TAIL_LINES="${PROGRESS_TAIL_LINES:-$DEFAULT_PROGRESS_TAIL_LINES}"
 TINY_TASK_STORY_MAX="${TINY_TASK_STORY_MAX:-$DEFAULT_TINY_TASK_STORY_MAX}"
 TINY_TASK_MODE_OVERRIDE="${TINY_TASK_MODE_OVERRIDE:-}"
+RUN_TAG="$(date +%Y%m%d-%H%M%S)-$$"
 
 abs_path() {
   local p="$1"
@@ -377,8 +378,6 @@ if [ ! -f "$ACTIVITY_LOG_PATH" ]; then
     echo ""
   } > "$ACTIVITY_LOG_PATH"
 fi
-
-RUN_TAG="$(date +%Y%m%d-%H%M%S)-$$"
 
 render_prompt() {
   local src="$1"
