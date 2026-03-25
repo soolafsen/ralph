@@ -413,7 +413,7 @@ async function main() {
       opencode: "opencode run \"$(cat {prompt})\"",
     };
     const interactiveDefaults = {
-      codex: "codex --yolo {prompt}",
+      codex: "codex exec --yolo --skip-git-repo-check {prompt}",
       claude: "claude --dangerously-skip-permissions {prompt}",
       droid: "droid --skip-permissions-unsafe {prompt}",
       opencode: "opencode --prompt {prompt}",
