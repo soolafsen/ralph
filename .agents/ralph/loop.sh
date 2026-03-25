@@ -199,6 +199,9 @@ if [ "$MODE" = "prd" ]; then
   if [ -z "${PRD_AGENT_CMD:-}" ]; then
     PRD_AGENT_CMD="$AGENT_CMD"
     PRD_USE_INLINE=0
+  elif [[ "${PRD_AGENT_CMD:-}" == codex* ]]; then
+    PRD_AGENT_CMD="$AGENT_CMD"
+    PRD_USE_INLINE=0
   fi
   if [ "${RALPH_DRY_RUN:-}" != "1" ]; then
     require_agent "${PRD_AGENT_CMD:-$AGENT_CMD}"
