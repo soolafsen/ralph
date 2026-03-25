@@ -45,12 +45,6 @@ Install directly from this fork:
 npm i -g github:soolafsen/ralph#main
 ```
 
-To test the slimmer branch specifically:
-
-```bash
-npm i -g github:soolafsen/ralph#slimline
-```
-
 ## Project Setup
 
 Install local templates into the current project:
