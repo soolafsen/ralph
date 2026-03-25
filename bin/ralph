@@ -19,6 +19,7 @@ let progressPath = null;
 let prdOutPath = null;
 let tinyMode = false;
 let planPath = null;
+let quietMode = false;
 
 function exists(p) {
   try {
@@ -77,7 +78,7 @@ Commands:
   prd ["<request>"] [--out path]      Generate a PRD (JSON) via agent
   ping                                Minimal agent health check
   log "<message>"                     Append to .ralph/activity.log
-  build [n] [--no-commit] [--tiny]    Run build loop (default)
+  build [n] [--no-commit] [--tiny] [--quiet]  Run build loop (default)
   overview                            Render a human overview from PRD JSON
   help                                Show this message
 
@@ -87,6 +88,7 @@ Options:
   --out <path>                        Override PRD output path (prd command)
   --progress <path>                   Override progress log path
   --tiny                              Force tiny-task prompt mode for build runs
+  --quiet                             Terse terminal output; full logs stay on disk
   --agent <codex|claude|droid|opencode>  Override agent runner
 
 Notes:
@@ -103,6 +105,7 @@ Generate a PRD JSON via agent.
 Options:
   --plan <path>   Use a plan file as the PRD source
   --out <path>    Override the output file or directory
+  --quiet         Terse terminal output; full logs stay on disk
   --agent <name>  Override agent runner
 
 Auto-detect:
@@ -292,6 +295,10 @@ for (let i = 0; i < rawArgs.length; i += 1) {
   }
   if (arg === "--tiny") {
     tinyMode = true;
+    continue;
+  }
+  if (arg === "--quiet") {
+    quietMode = true;
     continue;
   }
   if (arg.startsWith("--prd=")) {
@@ -583,6 +590,7 @@ async function main() {
   }
   if (progressPath) env.PROGRESS_PATH = progressPath;
   if (tinyMode) env.TINY_TASK_MODE_OVERRIDE = "true";
+  if (quietMode) env.RALPH_QUIET = "1";
   if (templateDir === globalDir) {
     env.PROMPT_BUILD = path.join(templateDir, "PROMPT_build.md");
     env.GUARDRAILS_REF = path.join(templateDir, "references", "GUARDRAILS.md");

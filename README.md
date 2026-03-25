@@ -125,6 +125,13 @@ Run without commits:
 ralph build 1 --no-commit
 ```
 
+Run with terse terminal output:
+
+```bash
+ralph prd --quiet
+ralph build 1 --quiet
+```
+
 Force tiny-task mode:
 
 ```bash
@@ -166,6 +173,20 @@ ralph build 1 --tiny
 ```
 
 Tiny-task mode does not change the loop structure. It changes the prompt guidance so Codex prefers the shortest valid implementation and avoids unnecessary scaffolding or ceremony.
+
+## Quiet Mode
+
+Use `--quiet` when you want a short progress view in the terminal while keeping full logs on disk.
+
+Quiet mode is intended to show only major stage changes, for example:
+
+- PRD started / completed
+- build iteration started
+- story completed / failed / incomplete
+- remaining story count
+- log file path
+
+The detailed agent output still goes to `.ralph/runs/`.
 
 ## Stale Story Recovery
 

@@ -42,6 +42,7 @@ DEFAULT_PROGRESS_TAIL_LINES=20
 DEFAULT_TINY_TASK_STORY_MAX=3
 PRD_REQUEST_PATH=""
 PRD_INLINE=""
+QUIET_MODE="${RALPH_QUIET:-0}"
 
 # Optional config overrides (simple shell vars)
 if [ -f "$CONFIG_FILE" ]; then
@@ -167,6 +168,12 @@ run_agent_inline() {
   eval "$cmd"
 }
 
+quiet_echo() {
+  if [ "$QUIET_MODE" = "1" ]; then
+    echo "$@"
+  fi
+}
+
 MODE="build"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -213,9 +220,9 @@ if [ "$MODE" = "prd" ]; then
   fi
 
   if [[ "$PRD_PATH" == *.json ]]; then
-    mkdir -p "$(dirname "$PRD_PATH")" "$TMP_DIR"
+    mkdir -p "$(dirname "$PRD_PATH")" "$TMP_DIR" "$RUNS_DIR"
   else
-    mkdir -p "$PRD_PATH" "$TMP_DIR"
+    mkdir -p "$PRD_PATH" "$TMP_DIR" "$RUNS_DIR"
   fi
 
   if [ -z "$PRD_REQUEST_PATH" ] && [ -n "$PRD_INLINE" ]; then
@@ -245,6 +252,7 @@ if [ "$MODE" = "prd" ]; then
   fi
 
   PRD_PROMPT_FILE="$TMP_DIR/prd-prompt-$(date +%Y%m%d-%H%M%S)-$$.md"
+  PRD_LOG_FILE="$RUNS_DIR/prd-$RUN_TAG.log"
   {
     echo "You are an autonomous coding agent."
     echo "Use the \$prd skill to create a Product Requirements Document in JSON."
@@ -263,12 +271,38 @@ if [ "$MODE" = "prd" ]; then
     cat "$PRD_REQUEST_PATH"
   } > "$PRD_PROMPT_FILE"
 
-  if [ "$PRD_USE_INLINE" -eq 1 ]; then
-    run_agent_inline "$PRD_PROMPT_FILE"
-  else
-    run_agent "$PRD_PROMPT_FILE"
+  if [ "$QUIET_MODE" = "1" ]; then
+    quiet_echo "PRD: starting"
   fi
-  exit 0
+  if [ "$PRD_USE_INLINE" -eq 1 ]; then
+    if [ "$QUIET_MODE" = "1" ]; then
+      set +e
+      run_agent_inline "$PRD_PROMPT_FILE" >"$PRD_LOG_FILE" 2>&1
+      CMD_STATUS=$?
+      set -e
+    else
+      run_agent_inline "$PRD_PROMPT_FILE"
+      CMD_STATUS=$?
+    fi
+  else
+    if [ "$QUIET_MODE" = "1" ]; then
+      set +e
+      run_agent "$PRD_PROMPT_FILE" >"$PRD_LOG_FILE" 2>&1
+      CMD_STATUS=$?
+      set -e
+    else
+      run_agent "$PRD_PROMPT_FILE"
+      CMD_STATUS=$?
+    fi
+  fi
+  if [ "$QUIET_MODE" = "1" ]; then
+    if [ "${CMD_STATUS:-0}" -eq 0 ]; then
+      quiet_echo "PRD: complete (full log: $PRD_LOG_FILE)"
+    else
+      quiet_echo "PRD: failed (full log: $PRD_LOG_FILE)"
+    fi
+  fi
+  exit "${CMD_STATUS:-0}"
 fi
 
 if [ "${RALPH_DRY_RUN:-}" != "1" ]; then
@@ -898,16 +932,24 @@ git_dirty_files() {
   fi
 }
 
-echo "Ralph mode: $MODE"
-echo "Max iterations: $MAX_ITERATIONS"
-echo "PRD: $PRD_PATH"
+if [ "$QUIET_MODE" = "1" ]; then
+  quiet_echo "Build: start"
+else
+  echo "Ralph mode: $MODE"
+  echo "Max iterations: $MAX_ITERATIONS"
+  echo "PRD: $PRD_PATH"
+fi
 HAS_ERROR="false"
 
 for i in $(seq 1 "$MAX_ITERATIONS"); do
-  echo ""
-  echo "-------------------------------------------------------"
-  echo "  Ralph Iteration $i of $MAX_ITERATIONS"
-  echo "-------------------------------------------------------"
+  if [ "$QUIET_MODE" = "1" ]; then
+    quiet_echo "Build: iteration $i/$MAX_ITERATIONS"
+  else
+    echo ""
+    echo "-------------------------------------------------------"
+    echo "  Ralph Iteration $i of $MAX_ITERATIONS"
+    echo "-------------------------------------------------------"
+  fi
 
   STORY_META=""
   STORY_BLOCK=""
@@ -955,10 +997,19 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   fi
   set +e
   if [ "${RALPH_DRY_RUN:-}" = "1" ]; then
-    echo "[RALPH_DRY_RUN] Skipping agent execution." | tee "$LOG_FILE"
+    if [ "$QUIET_MODE" = "1" ]; then
+      echo "[RALPH_DRY_RUN] Skipping agent execution." > "$LOG_FILE"
+      quiet_echo "Build: dry-run"
+    else
+      echo "[RALPH_DRY_RUN] Skipping agent execution." | tee "$LOG_FILE"
+    fi
     CMD_STATUS=0
   else
-    run_agent "$PROMPT_RENDERED" 2>&1 | tee "$LOG_FILE"
+    if [ "$QUIET_MODE" = "1" ]; then
+      run_agent "$PROMPT_RENDERED" >"$LOG_FILE" 2>&1
+    else
+      run_agent "$PROMPT_RENDERED" 2>&1 | tee "$LOG_FILE"
+    fi
     CMD_STATUS=$?
   fi
   set -e
@@ -996,28 +1047,57 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     if [ "$CMD_STATUS" -ne 0 ]; then
       log_error "ITERATION $i exited non-zero; review $LOG_FILE"
       update_story_status "$STORY_ID" "open"
-      echo "Iteration failed; story reset to open."
+      if [ "$QUIET_MODE" = "1" ]; then
+        quiet_echo "Build: story $STORY_ID failed"
+      else
+        echo "Iteration failed; story reset to open."
+      fi
     elif grep -q "<promise>COMPLETE</promise>" "$LOG_FILE"; then
       update_story_status "$STORY_ID" "done"
-      echo "Completion signal received; story marked done."
+      if [ "$QUIET_MODE" = "1" ]; then
+        quiet_echo "Build: story $STORY_ID complete"
+      else
+        echo "Completion signal received; story marked done."
+      fi
     else
       update_story_status "$STORY_ID" "open"
-      echo "No completion signal; story reset to open."
+      if [ "$QUIET_MODE" = "1" ]; then
+        quiet_echo "Build: story $STORY_ID incomplete"
+      else
+        echo "No completion signal; story reset to open."
+      fi
     fi
     REMAINING="$(remaining_from_prd)"
-    echo "Iteration $i complete. Remaining stories: $REMAINING"
+    if [ "$QUIET_MODE" = "1" ]; then
+      quiet_echo "Build: remaining stories $REMAINING"
+      quiet_echo "Build: log $LOG_FILE"
+    else
+      echo "Iteration $i complete. Remaining stories: $REMAINING"
+    fi
     if [ "$REMAINING" = "0" ]; then
-      echo "No remaining stories."
+      if [ "$QUIET_MODE" = "1" ]; then
+        quiet_echo "Build: complete"
+      else
+        echo "No remaining stories."
+      fi
       exit 0
     fi
   else
-    echo "Iteration $i complete."
+    if [ "$QUIET_MODE" = "1" ]; then
+      quiet_echo "Build: iteration $i complete"
+    else
+      echo "Iteration $i complete."
+    fi
   fi
   sleep 2
 
 done
 
-echo "Reached max iterations ($MAX_ITERATIONS)."
+if [ "$QUIET_MODE" = "1" ]; then
+  quiet_echo "Build: reached max iterations ($MAX_ITERATIONS)"
+else
+  echo "Reached max iterations ($MAX_ITERATIONS)."
+fi
 if [ "$HAS_ERROR" = "true" ]; then
   exit 1
 fi
