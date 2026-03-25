@@ -180,6 +180,21 @@ ralph build 1 --tiny
 
 Tiny-task mode does not change the loop structure. It changes the prompt guidance so Codex prefers the shortest valid implementation and avoids unnecessary scaffolding or ceremony.
 
+Practical effects of `--tiny`:
+
+- biases Codex toward the shortest valid implementation
+- reduces unnecessary scaffolding, ceremony, and extra documentation
+- skips progress snapshot context in the slimmer loop path
+- helps keep trivial tasks from getting over-engineered
+
+What `--tiny` does not do:
+
+- it does not change iteration count
+- it does not skip verification
+- it does not bypass PRD story selection
+- it does not change git or `--no-commit` behavior
+- it does not reduce story count inside the PRD automatically
+
 ## Quiet Mode
 
 Use `--quiet` when you want a short progress view in the terminal while keeping full logs on disk.
