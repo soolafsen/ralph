@@ -95,6 +95,24 @@ Notes:
 `);
 }
 
+function prdUsage() {
+  console.log(`ralph prd ["<request>"] [options]
+
+Generate a PRD JSON via agent.
+
+Options:
+  --plan <path>   Use a plan file as the PRD source
+  --out <path>    Override the output file or directory
+  --agent <name>  Override agent runner
+
+Auto-detect:
+  If no request text and no --plan are provided, Ralph looks for:
+  - cursor-plan.md
+  - plan.md
+  - *.plan.md
+`);
+}
+
 function findPrdCandidates(baseDir) {
   const tasksDir = path.join(baseDir, ".agents", "tasks");
   if (!exists(tasksDir)) {
@@ -621,6 +639,10 @@ async function main() {
   }
 
   if (cmd === "prd") {
+    if (args[1] === "--help" || args[1] === "-h") {
+      prdUsage();
+      process.exit(0);
+    }
     let request = args.slice(1).join(" ").trim();
     const resolvedPlanPath = request ? null : await resolvePlanPath({ cwd, explicitPath: planPath });
     if (resolvedPlanPath) {
