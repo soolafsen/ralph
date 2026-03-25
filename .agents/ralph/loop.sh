@@ -87,6 +87,7 @@ NO_COMMIT="${NO_COMMIT:-$DEFAULT_NO_COMMIT}"
 STALE_SECONDS="${STALE_SECONDS:-$DEFAULT_STALE_SECONDS}"
 PROGRESS_TAIL_LINES="${PROGRESS_TAIL_LINES:-$DEFAULT_PROGRESS_TAIL_LINES}"
 TINY_TASK_STORY_MAX="${TINY_TASK_STORY_MAX:-$DEFAULT_TINY_TASK_STORY_MAX}"
+TINY_TASK_MODE_OVERRIDE="${TINY_TASK_MODE_OVERRIDE:-}"
 
 abs_path() {
   local p="$1"
@@ -920,7 +921,9 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   RUN_META="$RUNS_DIR/run-$RUN_TAG-iter-$i.md"
   build_progress_context "$PROGRESS_CONTEXT"
   TINY_TASK_MODE="false"
-  if [ "$MODE" = "build" ]; then
+  if [ "$MODE" = "build" ] && [ -n "$TINY_TASK_MODE_OVERRIDE" ]; then
+    TINY_TASK_MODE="$TINY_TASK_MODE_OVERRIDE"
+  elif [ "$MODE" = "build" ]; then
     TINY_TASK_MODE="$(tiny_task_mode_from_meta "$STORY_META")"
   fi
   render_prompt "$PROMPT_FILE" "$PROMPT_RENDERED" "$STORY_META" "$STORY_BLOCK" "$PROGRESS_CONTEXT" "$TINY_TASK_MODE" "$RUN_TAG" "$i" "$LOG_FILE" "$RUN_META"

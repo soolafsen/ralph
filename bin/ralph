@@ -17,6 +17,7 @@ let installForce = false;
 let prdPath = null;
 let progressPath = null;
 let prdOutPath = null;
+let tinyMode = false;
 
 function exists(p) {
   try {
@@ -75,7 +76,7 @@ Commands:
   prd ["<request>"] [--out path]      Generate a PRD (JSON) via agent
   ping                                Minimal agent health check
   log "<message>"                     Append to .ralph/activity.log
-  build [n] [--no-commit]             Run build loop (default)
+  build [n] [--no-commit] [--tiny]    Run build loop (default)
   overview                            Render a human overview from PRD JSON
   help                                Show this message
 
@@ -83,6 +84,7 @@ Options:
   --prd <path>                        Override PRD path
   --out <path>                        Override PRD output path (prd command)
   --progress <path>                   Override progress log path
+  --tiny                              Force tiny-task prompt mode for build runs
   --agent <codex|claude|droid|opencode>  Override agent runner
 
 Notes:
@@ -208,6 +210,10 @@ for (let i = 0; i < rawArgs.length; i += 1) {
   }
   if (arg === "--force") {
     installForce = true;
+    continue;
+  }
+  if (arg === "--tiny") {
+    tinyMode = true;
     continue;
   }
   if (arg.startsWith("--prd=")) {
@@ -489,6 +495,7 @@ async function main() {
     env.ACTIVITY_CMD = "ralph log";
   }
   if (progressPath) env.PROGRESS_PATH = progressPath;
+  if (tinyMode) env.TINY_TASK_MODE_OVERRIDE = "true";
   if (templateDir === globalDir) {
     env.PROMPT_BUILD = path.join(templateDir, "PROMPT_build.md");
     env.GUARDRAILS_REF = path.join(templateDir, "references", "GUARDRAILS.md");

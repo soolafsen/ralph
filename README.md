@@ -2,188 +2,237 @@
 
 ![Ralph](ralph.webp)
 
-Ralph is a minimal, file‑based agent loop for autonomous coding. Each iteration starts fresh, reads the same on‑disk state, and commits work for one story at a time.
+Ralph is a file-based agent loop for autonomous coding. This fork is tuned specifically for **Codex**, **Windows**, and **Git Bash**.
 
-## How it works
+The main goals of this fork are:
 
-Ralph treats **files and git** as memory, not the model context:
+- work reliably with `codex exec`
+- run cleanly from Windows while invoking Git Bash for the shell loop
+- use slimmer prompts and less repeated context per iteration
+- keep the loop autonomous without dragging full chat history forward
 
-- **PRD (JSON)** defines stories, gates, and status
-- **Loop** executes one story per iteration
-- **State** persists in `.ralph/`
+## What This Fork Changes
 
-![Ralph architecture](diagram.svg)
+Compared with the upstream Ralph flow, this fork adds or changes:
 
-## Global CLI (recommended)
+- Windows launcher fixes so `.sh` loop scripts run through **Git Bash** instead of accidentally picking up WSL `bash`
+- Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
+- slimmer build prompts with a compact progress snapshot instead of feeding large context every run
+- automatic stale story recovery defaults
+- automatic tiny-task prompting for very small PRDs
+- an explicit `--tiny` flag for build runs
+- ASCII-safe loop banners for cleaner Windows terminal output
 
-Install and run Ralph from anywhere:
+## Recommended Environment
+
+This fork is tuned for:
+
+- Windows 11
+- PowerShell or `cmd.exe` as the outer shell
+- Git for Windows installed
+- Git Bash available at a standard Git install path
+- Codex CLI installed globally
+- Python available as both `python` and `python3` inside Git Bash
+
+If your system resolves `bash` to WSL first, that is fine: Ralph will prefer Git Bash on Windows when launching the loop.
+
+## Install
+
+Install directly from this fork:
 
 ```bash
-npm i -g @iannuttall/ralph
-ralph prd # launches an interactive prompt
-ralph build 1 # one Ralph run
+npm i -g github:soolafsen/ralph#main
 ```
 
-### Template hierarchy
+To test the slimmer branch specifically:
 
-Ralph will look for templates in this order:
+```bash
+npm i -g github:soolafsen/ralph#slimline
+```
 
-1. `.agents/ralph/` in the current project (if present)
-2. Bundled defaults shipped with this repo
+## Project Setup
 
-State and logs always go to `.ralph/` in the project.
-
-### Install templates into a project (optional overrides)
+Install local templates into the current project:
 
 ```bash
 ralph install
 ```
 
-This creates `.agents/ralph/` in the current repo so you can customize prompts and loop behavior. During install, you’ll be asked if you want to add the required skills.
-
-### Install required skills (optional)
+Install skills:
 
 ```bash
 ralph install --skills
 ```
 
-You’ll be prompted for agent (codex/claude/droid/opencode) and local vs global install. Skills installed: **commit**, **dev-browser**, **prd**.
-If you skipped skills during `ralph install`, you can run `ralph install --skills` anytime.
+The main skills are:
 
-## Quick start (project)
+- `prd`
+- `commit`
+- `dev-browser`
 
-1) Create your PRD (JSON) or generate one:
-```
+## How Ralph Works
+
+Ralph treats files and git state as memory:
+
+- the **PRD JSON** defines stories, dependencies, and quality gates
+- the **loop** selects one story per iteration
+- status and run logs are written to `.ralph/`
+
+Each build iteration starts fresh, reads the current on-disk state, completes one story, and then exits or moves to the next story depending on your iteration count.
+
+![Ralph architecture](diagram.svg)
+
+## Quick Start
+
+Create a PRD:
+
+```bash
 ralph prd
 ```
-Requires the **prd** skill (install via `ralph install --skills`).
 
-Example prompt text:
-```
-A lightweight uptime monitor (Hono app), deployed on Cloudflare, with email alerts via AWS SES
-```
+This fork expects the `prd` skill to work in a **one-shot** flow. The recommended skill behavior is:
 
-Default output (agent chooses a short filename in `.agents/tasks/`):
-```
-.agents/tasks/prd-<short>.json
-```
+- do not ask follow-up questions
+- make reasonable assumptions
+- write a deterministic JSON PRD in one run
 
-2) Run one build iteration:
-```
-ralph build 1 # one Ralph run
+Run one iteration:
+
+```bash
+ralph build 1
 ```
 
-No‑commit dry run:
-```
-ralph build 1 --no-commit # one Ralph run
+Run without commits:
+
+```bash
+ralph build 1 --no-commit
 ```
 
-Override PRD output for `ralph prd`:
+Force tiny-task mode:
+
+```bash
+ralph build 1 --tiny
 ```
-ralph prd --out .agents/tasks/prd-api.json
+
+Choose a PRD explicitly:
+
+```bash
+ralph build 1 --prd .agents/tasks/prd-api.json
 ```
-Optional human overview (generated from JSON):
+
+Override the progress log:
+
+```bash
+ralph build 1 --progress .ralph/progress-api.md
 ```
+
+Generate a quick overview from an existing PRD:
+
+```bash
 ralph overview
 ```
-This writes a tiny overview alongside the PRD: `prd-<slug>.overview.md`.
 
-PRD story status fields are updated automatically by the loop:
-- `open` → selectable
-- `in_progress` → locked by a running loop (with `startedAt`)
-- `done` → completed (with `completedAt`)
+## Tiny Task Mode
 
-If a loop crashes and a story stays `in_progress`, you can set `STALE_SECONDS` in `.agents/ralph/config.sh` to allow Ralph to automatically reopen stalled stories.
+Tiny-task mode is designed for very small stories where the original Ralph prompt overhead is wasteful.
 
-## Override PRD paths
+By default, tiny-task mode is enabled automatically for small PRDs. In this fork, the threshold is controlled by:
 
-You can point Ralph at a different PRD JSON file via CLI flags:
+```sh
+TINY_TASK_STORY_MAX=3
+```
+
+You can also force it explicitly with:
 
 ```bash
-ralph build 1 --prd .agents/tasks/prd-api.json # one Ralph run
+ralph build 1 --tiny
 ```
 
-Optional progress override:
+Tiny-task mode does not change the loop structure. It changes the prompt guidance so Codex prefers the shortest valid implementation and avoids unnecessary scaffolding or ceremony.
+
+## Stale Story Recovery
+
+If a run crashes after a story is marked `in_progress`, Ralph can reopen it automatically.
+
+This fork defaults to:
+
+```sh
+STALE_SECONDS=300
+```
+
+That means stories stuck in `in_progress` for more than 5 minutes are reopened automatically on the next loop run.
+
+## Agent Runner
+
+This fork is tuned for Codex first, but the agent map still supports:
+
+- `codex`
+- `claude`
+- `droid`
+- `opencode`
+
+Example:
 
 ```bash
-ralph build 1 --progress .ralph/progress-api.md # one Ralph run
-```
-
-If multiple PRD JSON files exist in `.agents/tasks/` and you omit `--prd`, Ralph will prompt you to choose.
-
-Optional config file (if you installed templates):
-
-```
-.agents/ralph/config.sh
-```
-
-## Choose the agent runner
-
-Set `AGENT_CMD` in `.agents/ralph/config.sh` to switch agents:
-
-```
-AGENT_CMD="codex exec --yolo -"
-AGENT_CMD="claude -p --dangerously-skip-permissions \"\$(cat {prompt})\""
-AGENT_CMD="droid exec --skip-permissions-unsafe -f {prompt}"
-AGENT_CMD="opencode run \"$(cat {prompt})\""
-```
-
-Or override per run:
-
-```
 ralph prd --agent=codex
-ralph build 1 --agent=codex # one Ralph run
-ralph build 1 --agent=claude # one Ralph run
-ralph build 1 --agent=droid # one Ralph run
-ralph build 1 --agent=opencode # one Ralph run
+ralph build 1 --agent=codex
 ```
 
-If the CLI isn’t installed, Ralph prints install hints:
+The Codex defaults in this fork use `codex exec`.
 
+## Windows Notes
+
+Important Windows-specific behavior in this fork:
+
+- the loop script is launched through **Git Bash**
+- Windows paths are converted before being passed into Bash
+- shell scripts are normalized to LF in the repo
+- the loop banner uses ASCII output to avoid mojibake in Windows terminals
+
+If `ralph build` says Python is missing even though `python` works in PowerShell, check Git Bash:
+
+```bash
+python3 --version
+command -v python3
 ```
-codex    -> npm i -g @openai/codex
-claude   -> curl -fsSL https://claude.ai/install.sh | bash
-droid    -> curl -fsSL https://app.factory.ai/cli | sh
-opencode -> curl -fsSL https://opencode.ai/install.sh | bash
-```
 
-## State files (.ralph/)
+Ralph's shell loop uses `python3`, so that command must resolve inside Git Bash.
 
-- `progress.md` — append‑only progress log
-- `guardrails.md` — “Signs” (lessons learned)
-- `activity.log` — activity + timing log
-- `errors.log` — repeated failures and notes
-- `runs/` — raw run logs + summaries
+## State Files
+
+Ralph writes loop state to `.ralph/`:
+
+- `progress.md`
+- `activity.log`
+- `errors.log`
+- `runs/`
+
+Templates live in `.agents/ralph/`.
+
+PRDs live in `.agents/tasks/`.
 
 ## Notes
 
-- `.agents/ralph` is portable and can be copied between repos.
-- `.ralph` is per‑project state.
-- Use `{prompt}` in `AGENT_CMD` when agent needs a file path instead of stdin.
-- Examples: see `examples/commands.md`.
-- **OpenCode server mode**: For faster performance with OpenCode, run `opencode serve` in a separate terminal and uncomment the `AGENT_OPENCODE_CMD` lines in `.agents/ralph/agents.sh` to use `--attach http://localhost:4096`. This avoids cold boot on every run.
+- This fork is intentionally optimized for the Codex + Windows + Git Bash workflow, not for being perfectly generic across every shell and agent combination.
+- The build prompt is slimmer than upstream and passes less repeated context per iteration.
+- For tiny one-off changes, direct Codex use may still be cheaper than Ralph.
+- Ralph makes the most sense for structured multi-step work where resumable state is useful.
 
 ## Tests
 
-Dry-run smoke tests (no agent required):
+Dry-run smoke tests:
 
 ```bash
 npm test
 ```
 
-Fast agent health check (real agent call, minimal output):
+Minimal agent ping:
 
 ```bash
 npm run test:ping
 ```
 
-Optional integration test (requires agents installed):
-
-```bash
-RALPH_INTEGRATION=1 npm test
-```
-
-Full real-agent loop test:
+Real-agent loop test:
 
 ```bash
 npm run test:real
