@@ -14,6 +14,7 @@ const skillsRoot = path.join(repoRoot, "skills");
 let agentOverride = null;
 let installSkills = false;
 let installForce = false;
+let installForceSkills = false;
 let prdPath = null;
 let progressPath = null;
 let prdOutPath = null;
@@ -74,9 +75,10 @@ function usage() {
   console.log(`ralph <command>
 
 Commands:
-  install [--skills] [--force]        Copy .agents/ralph into the current repo
+  install [--skills] [--force] [--force-skills]  Copy .agents/ralph into the current repo
   prd ["<request>"] [--out path]      Generate a PRD (JSON) via agent
   ping                                Minimal agent health check
+  doctor                              Check Windows/Codex/Git Bash prerequisites
   log "<message>"                     Append to .ralph/activity.log
   build [n] [--no-commit] [--tiny] [--quiet]  Run build loop (default)
   overview                            Render a human overview from PRD JSON
@@ -89,6 +91,7 @@ Options:
   --progress <path>                   Override progress log path
   --tiny                              Force tiny-task prompt mode for build runs
   --quiet                             Terse terminal output; full logs stay on disk
+  --force-skills                      Reinstall bundled skills even if they exist
   --agent <codex|claude|droid|opencode>  Override agent runner
 
 Notes:
@@ -293,6 +296,10 @@ for (let i = 0; i < rawArgs.length; i += 1) {
     installForce = true;
     continue;
   }
+  if (arg === "--force-skills") {
+    installForceSkills = true;
+    continue;
+  }
   if (arg === "--tiny") {
     tinyMode = true;
     continue;
@@ -408,7 +415,7 @@ async function runInstallSkills() {
       skipped.push(`${skill} (missing in repo)`);
       continue;
     }
-    if (exists(target) && !installForce) {
+    if (exists(target) && !(installForce || installForceSkills)) {
       skipped.push(`${skill} (already exists)`);
       continue;
     }
@@ -485,6 +492,59 @@ async function main() {
       }
     }
     process.exit(0);
+  }
+
+  if (cmd === "doctor") {
+    const home = os.homedir();
+    const bashExe = resolveBashExecutable();
+    const codexSkills = path.join(home, ".codex", "skills");
+    const checks = [
+      {
+        label: "Git Bash",
+        ok: exists(bashExe),
+        detail: exists(bashExe) ? bashExe : "not found",
+      },
+      {
+        label: "Codex CLI",
+        ok: spawnSync("codex", ["--version"], { stdio: "ignore" }).status === 0,
+        detail: spawnSync("codex", ["--version"], { encoding: "utf-8" }).stdout?.trim() || "not found",
+      },
+      {
+        label: "Python (PowerShell)",
+        ok: spawnSync("python", ["--version"], { stdio: "ignore" }).status === 0,
+        detail: spawnSync("python", ["--version"], { encoding: "utf-8" }).stdout?.trim() || spawnSync("python", ["--version"], { encoding: "utf-8" }).stderr?.trim() || "not found",
+      },
+      {
+        label: "Python3 (Git Bash)",
+        ok: spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { stdio: "ignore" }).status === 0,
+        detail: spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" }).stdout?.trim() || spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" }).stderr?.trim() || "not found",
+      },
+      {
+        label: "Bundled templates",
+        ok: exists(globalDir),
+        detail: globalDir,
+      },
+      {
+        label: "Bundled skills",
+        ok: exists(skillsRoot),
+        detail: skillsRoot,
+      },
+      {
+        label: "Global Codex skills",
+        ok: exists(codexSkills),
+        detail: codexSkills,
+      },
+      {
+        label: "Local templates",
+        ok: exists(localDir),
+        detail: localDir,
+      },
+    ];
+    for (const check of checks) {
+      console.log(`${check.ok ? "OK " : "!! "} ${check.label}: ${check.detail}`);
+    }
+    const ok = checks.every((check) => check.ok || check.label === "Local templates");
+    process.exit(ok ? 0 : 1);
   }
 
   const templateDir = exists(localDir) ? localDir : globalDir;

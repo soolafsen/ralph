@@ -65,6 +65,12 @@ Install skills:
 ralph install --skills
 ```
 
+Reinstall bundled skills even if they already exist:
+
+```bash
+ralph install --skills --force-skills
+```
+
 The main skills are:
 
 - `prd`
@@ -154,6 +160,12 @@ Generate a quick overview from an existing PRD:
 
 ```bash
 ralph overview
+```
+
+Check local prerequisites:
+
+```bash
+ralph doctor
 ```
 
 ## Tiny Task Mode
