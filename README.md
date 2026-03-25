@@ -91,11 +91,25 @@ Create a PRD:
 ralph prd
 ```
 
+Use an existing plan file directly:
+
+```bash
+ralph prd --plan cursor-plan.md
+ralph prd --plan plan.md
+```
+
 This fork expects the `prd` skill to work in a **one-shot** flow. The recommended skill behavior is:
 
 - do not ask follow-up questions
 - make reasonable assumptions
 - write a deterministic and compact JSON PRD in one run
+
+If you run `ralph prd` with no inline request and no `--plan`, Ralph will look for:
+
+- `cursor-plan.md`
+- `plan.md`
+
+If one or more of those files exist in the current repo, Ralph will offer to use one of them before falling back to manual entry.
 
 Run one iteration:
 

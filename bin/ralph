@@ -18,6 +18,7 @@ let prdPath = null;
 let progressPath = null;
 let prdOutPath = null;
 let tinyMode = false;
+let planPath = null;
 
 function exists(p) {
   try {
@@ -82,6 +83,7 @@ Commands:
 
 Options:
   --prd <path>                        Override PRD path
+  --plan <path>                       Use a plan file as PRD input
   --out <path>                        Override PRD output path (prd command)
   --progress <path>                   Override progress log path
   --tiny                              Force tiny-task prompt mode for build runs
@@ -106,6 +108,12 @@ function findPrdCandidates(baseDir) {
 
 function defaultPrdOutputPath(baseDir, request) {
   return path.join(baseDir, ".agents", "tasks");
+}
+
+function findPlanCandidates(baseDir) {
+  return ["cursor-plan.md", "plan.md"]
+    .map((name) => path.join(baseDir, name))
+    .filter((candidate) => exists(candidate));
 }
 
 function toBashPath(value) {
@@ -193,6 +201,53 @@ async function resolvePrdPath({ cwd, explicitPath, label }) {
   return selection;
 }
 
+async function resolvePlanPath({ cwd, explicitPath }) {
+  if (explicitPath) {
+    const resolved = path.resolve(cwd, explicitPath);
+    if (!exists(resolved)) {
+      console.error(`Plan file not found: ${resolved}`);
+      process.exit(1);
+    }
+    return resolved;
+  }
+  const candidates = findPlanCandidates(cwd);
+  if (candidates.length === 0) {
+    return null;
+  }
+  if (candidates.length === 1) {
+    const candidate = candidates[0];
+    const { select, isCancel } = await import("@clack/prompts");
+    const choice = await select({
+      message: `Use detected plan file ${path.relative(cwd, candidate)}?`,
+      options: [
+        { value: candidate, label: `Use ${path.relative(cwd, candidate)}` },
+        { value: "__manual__", label: "Type request manually" },
+      ],
+      initialValue: candidate,
+    });
+    if (isCancel(choice)) {
+      process.exit(0);
+    }
+    return choice === "__manual__" ? null : choice;
+  }
+  const { select, isCancel } = await import("@clack/prompts");
+  const choice = await select({
+    message: "Choose a plan file or type the request manually",
+    options: [
+      ...candidates.map((candidate) => ({
+        value: candidate,
+        label: path.relative(cwd, candidate),
+      })),
+      { value: "__manual__", label: "Type request manually" },
+    ],
+    initialValue: candidates[0],
+  });
+  if (isCancel(choice)) {
+    process.exit(0);
+  }
+  return choice === "__manual__" ? null : choice;
+}
+
 for (let i = 0; i < rawArgs.length; i += 1) {
   const arg = rawArgs[i];
   if (arg.startsWith("--agent=")) {
@@ -220,12 +275,21 @@ for (let i = 0; i < rawArgs.length; i += 1) {
     prdPath = arg.split("=").slice(1).join("=");
     continue;
   }
+  if (arg.startsWith("--plan=")) {
+    planPath = arg.split("=").slice(1).join("=");
+    continue;
+  }
   if (arg.startsWith("--out=")) {
     prdOutPath = arg.split("=").slice(1).join("=");
     continue;
   }
   if (arg === "--prd") {
     prdPath = rawArgs[i + 1];
+    i += 1;
+    continue;
+  }
+  if (arg === "--plan") {
+    planPath = rawArgs[i + 1];
     i += 1;
     continue;
   }
@@ -553,6 +617,15 @@ async function main() {
 
   if (cmd === "prd") {
     let request = args.slice(1).join(" ").trim();
+    const resolvedPlanPath = request ? null : await resolvePlanPath({ cwd, explicitPath: planPath });
+    if (resolvedPlanPath) {
+      request = fs.readFileSync(resolvedPlanPath, "utf-8").trim();
+      if (!request) {
+        console.error(`Plan file is empty: ${resolvedPlanPath}`);
+        process.exit(1);
+      }
+      console.log(`Using plan file: ${path.relative(cwd, resolvedPlanPath)}`);
+    }
     if (!request) {
       const { intro, outro, text, isCancel } = await import("@clack/prompts");
       intro("Ralph PRD");
