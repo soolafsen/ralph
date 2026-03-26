@@ -101,6 +101,11 @@ function formatLogDate(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+function formatClockTime(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -116,8 +121,12 @@ function exists(filePath) {
 
 function quietEcho(message) {
   if (quietMode) {
-    console.log(message);
+    console.log(`[${formatClockTime(new Date())}] ${message}`);
   }
+}
+
+function formatCount(value) {
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
 function ensureDir(dirPath) {
@@ -498,6 +507,7 @@ function writeRunMeta(metaPath, payload) {
     `- Started: ${payload.started}`,
     `- Ended: ${payload.ended}`,
     `- Duration: ${payload.duration}s`,
+    `- Tokens: ${payload.tokens == null ? "unknown" : formatCount(payload.tokens)}`,
     `- Status: ${payload.status}`,
     `- Log: ${payload.logFile}`,
     "",
@@ -531,6 +541,69 @@ function extractRunInstructions(logFile) {
   return "";
 }
 
+function extractCommandsFromText(text) {
+  const seen = new Set();
+  const commands = [];
+  const matches = text.matchAll(/`([^`\r\n]+)`/g);
+  for (const match of matches) {
+    const candidate = String(match[1] || "").trim();
+    if (!candidate) continue;
+    if (!/[\\/ ]|^(npm|pnpm|yarn|bun|python|pip|cargo|go|dotnet|make|uv)\b/i.test(candidate)) continue;
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    commands.push(candidate);
+  }
+  return commands;
+}
+
+function inferRunInstructions() {
+  const instructions = [];
+  const addUnique = (value) => {
+    if (!value || instructions.includes(value)) return;
+    instructions.push(value);
+  };
+
+  if (exists(agentsPath)) {
+    for (const command of extractCommandsFromText(fs.readFileSync(agentsPath, "utf-8"))) {
+      addUnique(command);
+    }
+  }
+
+  const readmePath = path.join(rootDir, "README.md");
+  if (exists(readmePath) && instructions.length === 0) {
+    for (const command of extractCommandsFromText(fs.readFileSync(readmePath, "utf-8"))) {
+      addUnique(command);
+    }
+  }
+
+  const packageJsonPath = path.join(rootDir, "package.json");
+  if (exists(packageJsonPath) && instructions.length === 0) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+      const scripts = pkg && typeof pkg === "object" ? pkg.scripts : null;
+      if (scripts && typeof scripts === "object") {
+        addUnique("npm install");
+        if (typeof scripts.dev === "string") addUnique("npm run dev");
+        if (typeof scripts.start === "string") addUnique("npm start");
+        if (typeof scripts.build === "string") addUnique("npm run build");
+        if (typeof scripts.test === "string") addUnique("npm test");
+      }
+    } catch {}
+  }
+
+  return instructions.join("\n");
+}
+
+function extractTokensUsed(logFile) {
+  if (!exists(logFile)) return null;
+  const text = fs.readFileSync(logFile, "utf-8");
+  const matches = Array.from(text.matchAll(/tokens used\s*\r?\n([\d,]+)/gi));
+  if (!matches.length) return null;
+  const raw = String(matches[matches.length - 1][1] || "").replace(/,/g, "");
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
 function readLogTail(logFile, maxBytes = completeMarkerTailBytes) {
   if (!exists(logFile)) return "";
   const stats = fs.statSync(logFile);
@@ -555,9 +628,9 @@ function tailHasStandaloneCompletionMarker(logFile) {
 }
 
 function printRunInstructions(logFile) {
-  const instructions = extractRunInstructions(logFile);
+  const instructions = extractRunInstructions(logFile) || inferRunInstructions();
   if (!instructions) return;
-  console.log("Run Instructions:");
+  console.log(`[${formatClockTime(new Date())}] Run Instructions:`);
   console.log(instructions);
 }
 
@@ -668,7 +741,7 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
       hangWarned = false;
       if (quietMode) {
         if (!printed) {
-          process.stdout.write(label);
+          process.stdout.write(`[${formatClockTime(new Date())}] ${label}`);
           printed = true;
         }
         process.stdout.write(".");
@@ -691,7 +764,7 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
       }
       if (completionSeen && completeGraceMs > 0 && completionIdleMs >= completeGraceMs && !completedAndTerminated) {
         if (!printed) {
-          process.stdout.write(label);
+          process.stdout.write(`[${formatClockTime(new Date())}] ${label}`);
           printed = true;
         }
         process.stdout.write(` [warning: completion marker seen; forcing runner shutdown after ${Math.floor(completeGraceMs / 1000)}s]`);
@@ -701,7 +774,7 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
       }
       if (hangWarningSeconds > 0 && idleSeconds >= hangWarningSeconds && !hangWarned) {
         if (!printed) {
-          process.stdout.write(label);
+          process.stdout.write(`[${formatClockTime(new Date())}] ${label}`);
           printed = true;
         }
         process.stdout.write(` [warning: no new log output for ${hangWarningSeconds}s. Press Ctrl+C for retry/kill options.]`);
@@ -711,7 +784,7 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
         const bucket = Math.floor(idleSeconds / idleNoticeSeconds);
         if (bucket > lastIdleNoticeBucket) {
           if (!printed) {
-            process.stdout.write(label);
+            process.stdout.write(`[${formatClockTime(new Date())}] ${label}`);
             printed = true;
           }
           process.stdout.write(` [idle ${bucket * idleNoticeSeconds}s]`);
@@ -794,8 +867,12 @@ async function runPrd() {
 
   if (quietMode) quietEcho("PRD: starting");
   const result = await runAgentCommand(prdAgentCommand, prdPromptFile, prdLogFile, "PRD: working");
+  const prdTokens = extractTokensUsed(prdLogFile);
   if (quietMode) {
     quietEcho(result.status === 0 ? `PRD: complete (full log: ${prdLogFile})` : `PRD: failed (full log: ${prdLogFile})`);
+    if (prdTokens != null) {
+      quietEcho(`PRD: tokens ${formatCount(prdTokens)} (total ${formatCount(prdTokens)})`);
+    }
   }
   process.exit(result.status);
 }
@@ -817,6 +894,7 @@ async function runBuild() {
     requireAgent(agentCommand);
   }
   initializeFiles();
+  let cumulativeTokens = 0;
 
   if (quietMode) {
     quietEcho("Build: start");
@@ -895,6 +973,10 @@ async function runBuild() {
     const commitList = gitCommitList(headBefore, headAfter);
     const changedFiles = gitChangedFiles(headBefore, headAfter);
     const dirtyFiles = gitDirtyFiles();
+    const tokensUsed = extractTokensUsed(logFile);
+    if (tokensUsed != null) {
+      cumulativeTokens += tokensUsed;
+    }
     const statusLabel = interrupted ? "interrupted" : result.status !== 0 ? "error" : "success";
     if (!noCommit && dirtyFiles && !interrupted) {
       logError(`ITERATION ${iteration} left uncommitted changes; review run summary at ${runMeta}`);
@@ -909,6 +991,7 @@ async function runBuild() {
       started: iterStartFmt,
       ended: iterEndFmt,
       duration: iterDuration,
+      tokens: tokensUsed,
       status: statusLabel,
       logFile,
       headBefore,
@@ -918,7 +1001,7 @@ async function runBuild() {
       dirtyFiles,
     });
 
-    appendRunSummary(`${formatLogDate(new Date())} | run=${runTag} | iter=${iteration} | mode=${mode} | story=${storyId} | duration=${iterDuration}s | status=${statusLabel}`);
+    appendRunSummary(`${formatLogDate(new Date())} | run=${runTag} | iter=${iteration} | mode=${mode} | story=${storyId} | duration=${iterDuration}s | tokens=${tokensUsed == null ? "unknown" : tokensUsed} | status=${statusLabel}`);
 
     if (interrupted) {
       const completePresent = hasCompletionMarker(logFile);
@@ -974,6 +1057,9 @@ async function runBuild() {
     if (quietMode) {
       quietEcho(`Build: remaining stories ${remainingAfter}`);
       quietEcho(`Build: log ${logFile}`);
+      if (tokensUsed != null) {
+        quietEcho(`Build: tokens ${formatCount(tokensUsed)} (total ${formatCount(cumulativeTokens)})`);
+      }
     } else {
       console.log(`Iteration ${iteration} complete. Remaining stories: ${remainingAfter}`);
     }
