@@ -186,29 +186,110 @@ run_quiet_with_heartbeat() {
   local log_file="$2"
   shift 2
   local interval="${RALPH_QUIET_HEARTBEAT_SECONDS:-5}"
-  local printed="false"
+  local idle_notice_seconds="${RALPH_QUIET_IDLE_NOTICE_SECONDS:-30}"
+  local hang_warning_seconds="${RALPH_HANG_WARNING_SECONDS:-120}"
+  local complete_grace_seconds="${RALPH_COMPLETE_GRACE_SECONDS:-15}"
+  local heartbeat_base="${TMP_DIR}/heartbeat-${RUN_TAG:-$$}-$$-$RANDOM"
+  local done_file="${heartbeat_base}.done"
+  local printed_file="${heartbeat_base}.printed"
 
-  "$@" >"$log_file" 2>&1 &
-  local cmd_pid=$!
+  rm -f "$done_file" "$printed_file"
 
-  while kill -0 "$cmd_pid" 2>/dev/null; do
-    sleep "$interval"
-    if kill -0 "$cmd_pid" 2>/dev/null; then
-      if [ "$printed" = "false" ]; then
-        printf "%s" "$label"
-        printed="true"
+  (
+    trap 'exit 0' TERM INT
+    local last_size=0
+    local idle_seconds=0
+    local last_idle_notice_bucket=0
+    local hang_warned="false"
+    local complete_seen="false"
+    local complete_idle_seconds=0
+    local complete_warned="false"
+
+    while [ ! -f "$done_file" ]; do
+      sleep "$interval"
+      if [ -f "$done_file" ]; then
+        exit 0
       fi
-      printf "."
-    fi
-  done
 
-  wait "$cmd_pid"
+      local current_size=0
+      if [ -f "$log_file" ]; then
+        current_size="$(wc -c < "$log_file" 2>/dev/null || echo 0)"
+        current_size="${current_size//[!0-9]/}"
+        if [ -z "$current_size" ]; then
+          current_size=0
+        fi
+      fi
+
+      if [ "$current_size" -gt "$last_size" ]; then
+        if [ ! -f "$printed_file" ]; then
+          printf "%s" "$label"
+          : > "$printed_file"
+        fi
+        printf "."
+        last_size="$current_size"
+        idle_seconds=0
+        last_idle_notice_bucket=0
+        hang_warned="false"
+        complete_idle_seconds=0
+        complete_warned="false"
+        if [ "$complete_seen" = "false" ] && [ -f "$log_file" ] && grep -q "<promise>COMPLETE</promise>" "$log_file"; then
+          complete_seen="true"
+        fi
+      else
+        idle_seconds=$((idle_seconds + interval))
+        if [ "$complete_seen" = "false" ] && [ -f "$log_file" ] && grep -q "<promise>COMPLETE</promise>" "$log_file"; then
+          complete_seen="true"
+          complete_idle_seconds=0
+        elif [ "$complete_seen" = "true" ]; then
+          complete_idle_seconds=$((complete_idle_seconds + interval))
+        fi
+
+        if [ "$complete_seen" = "true" ] && [ "$complete_grace_seconds" -gt 0 ] && [ "$complete_idle_seconds" -ge "$complete_grace_seconds" ] && [ "$complete_warned" = "false" ]; then
+          if [ ! -f "$printed_file" ]; then
+            printf "%s" "$label"
+            : > "$printed_file"
+          fi
+          printf " [warning: completion marker seen; still running after %ss. Press Ctrl+C to stop and restart safely.]" "$complete_grace_seconds"
+          complete_warned="true"
+        fi
+
+        if [ "$hang_warning_seconds" -gt 0 ] && [ "$idle_seconds" -ge "$hang_warning_seconds" ] && [ "$hang_warned" = "false" ]; then
+          if [ ! -f "$printed_file" ]; then
+            printf "%s" "$label"
+            : > "$printed_file"
+          fi
+          printf " [warning: no new log output for %ss. If this looks stuck, press Ctrl+C to stop and restart. If it repeats on the same story, split the plan into smaller stories.]" "$hang_warning_seconds"
+          hang_warned="true"
+        fi
+
+        if [ "$idle_notice_seconds" -gt 0 ] && [ "$idle_seconds" -ge "$idle_notice_seconds" ]; then
+          local idle_bucket=$((idle_seconds / idle_notice_seconds))
+          if [ "$idle_bucket" -gt "$last_idle_notice_bucket" ]; then
+            if [ ! -f "$printed_file" ]; then
+            printf "%s" "$label"
+            : > "$printed_file"
+          fi
+            printf " [idle %ss]" "$((idle_bucket * idle_notice_seconds))"
+            last_idle_notice_bucket="$idle_bucket"
+          fi
+        fi
+      fi
+    done
+  ) &
+  local heartbeat_pid=$!
+
+  "$@" >"$log_file" 2>&1
   local status=$?
 
-  if [ "$printed" = "true" ]; then
+  : > "$done_file"
+  kill "$heartbeat_pid" 2>/dev/null || true
+  wait "$heartbeat_pid" 2>/dev/null || true
+
+  if [ -f "$printed_file" ]; then
     printf "\n"
   fi
 
+  rm -f "$done_file" "$printed_file"
   return "$status"
 }
 
@@ -1075,6 +1156,25 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   fi
   set -e
   if [ "$CMD_STATUS" -eq 130 ] || [ "$CMD_STATUS" -eq 143 ]; then
+    if [ "$MODE" = "build" ] && [ -n "${STORY_ID:-}" ]; then
+      if [ -f "$LOG_FILE" ] && grep -q "<promise>COMPLETE</promise>" "$LOG_FILE"; then
+        update_story_status "$STORY_ID" "done"
+        log_error "ITERATION $i interrupted after completion marker; story marked done for restart safety"
+        if [ "$QUIET_MODE" = "1" ]; then
+          quiet_echo "Build: interrupted after completion marker; marked $STORY_ID done"
+        else
+          echo "Interrupted after completion marker; story marked done."
+        fi
+      else
+        update_story_status "$STORY_ID" "open"
+        log_error "ITERATION $i interrupted before completion marker; story reset to open for restart"
+        if [ "$QUIET_MODE" = "1" ]; then
+          quiet_echo "Build: interrupted before completion marker; reset $STORY_ID to open"
+        else
+          echo "Interrupted before completion marker; story reset to open."
+        fi
+      fi
+    fi
     echo "Interrupted."
     exit "$CMD_STATUS"
   fi

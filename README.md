@@ -234,6 +234,21 @@ Quiet mode is intended to show only major stage changes, for example:
 
 The detailed agent output still goes to `.ralph/runs/`.
 
+The quiet heartbeat is now based on actual run-log activity:
+
+- `.` means the run log grew since the last check
+- `[idle 30s]`, `[idle 60s]`, and so on mean the process is still alive but the log has not changed for that long
+- quiet mode warns when a run is idle for a long time or when a completion marker appears but the process does not unwind
+
+That makes quiet mode a better liveness signal without pretending stalled output is active progress.
+
+If you interrupt a suspected hang:
+
+- Ralph marks the story `done` if the run log already contains `<promise>COMPLETE</promise>`
+- otherwise Ralph resets the story to `open`
+
+That allows a cleaner restart without waiting for stale-story recovery.
+
 ## Browser Visibility
 
 For frontend or UI stories, Ralph still expects browser verification by default.
