@@ -134,6 +134,57 @@ function defaultPrdOutputPath(baseDir, request) {
   return path.join(baseDir, ".agents", "tasks");
 }
 
+function skillRootsForAgent(agentName, baseDir) {
+  const home = os.homedir();
+  switch (agentName) {
+    case "codex":
+      return [
+        path.join(baseDir, ".codex", "skills"),
+        path.join(home, ".codex", "skills"),
+      ];
+    case "claude":
+      return [
+        path.join(baseDir, ".claude", "skills"),
+        path.join(home, ".claude", "skills"),
+      ];
+    case "droid":
+      return [
+        path.join(baseDir, ".factory", "skills"),
+        path.join(home, ".factory", "skills"),
+      ];
+    case "opencode":
+      return [
+        path.join(baseDir, ".opencode", "skills"),
+        path.join(home, ".local", "share", "opencode", "skills"),
+      ];
+    default:
+      return [];
+  }
+}
+
+function findInstalledSkill(agentName, skillName, baseDir) {
+  for (const root of skillRootsForAgent(agentName, baseDir)) {
+    const candidate = path.join(root, skillName);
+    if (exists(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function ensureRequiredSkill(agentName, skillName, baseDir) {
+  const installed = findInstalledSkill(agentName, skillName, baseDir);
+  if (installed) {
+    return installed;
+  }
+  const roots = skillRootsForAgent(agentName, baseDir);
+  const listedRoots = roots.length ? roots.join(", ") : "(unknown)";
+  console.error(`Missing ${skillName} skill for agent '${agentName}'.`);
+  console.error(`Searched: ${listedRoots}`);
+  console.error("Run `ralph install --skills` and install skills for the agent you are using.");
+  process.exit(1);
+}
+
 function findPlanCandidates(baseDir) {
   const explicit = ["cursor-plan.md", "plan.md"]
     .map((name) => path.join(baseDir, name))
@@ -143,6 +194,16 @@ function findPlanCandidates(baseDir) {
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".plan.md"))
     .map((entry) => path.join(baseDir, entry.name));
   return Array.from(new Set([...explicit, ...globbed]));
+}
+
+function printPlanSearchDiagnostics(baseDir, candidates) {
+  console.log(`Plan search cwd: ${baseDir}`);
+  console.log("Plan search patterns: cursor-plan.md, plan.md, *.plan.md");
+  if (candidates.length) {
+    console.log(`Plan candidates: ${candidates.map((candidate) => path.relative(baseDir, candidate)).join(", ")}`);
+  } else {
+    console.log("Plan candidates: none");
+  }
 }
 
 function toBashPath(value) {
@@ -241,6 +302,7 @@ async function resolvePlanPath({ cwd, explicitPath }) {
   }
   const candidates = findPlanCandidates(cwd);
   if (candidates.length === 0) {
+    printPlanSearchDiagnostics(cwd, candidates);
     return null;
   }
   if (candidates.length === 1) {
@@ -498,6 +560,9 @@ async function main() {
     const home = os.homedir();
     const bashExe = resolveBashExecutable();
     const codexSkills = path.join(home, ".codex", "skills");
+    const detectedPlans = findPlanCandidates(cwd);
+    const codexPrdLocal = path.join(cwd, ".codex", "skills", "prd");
+    const codexPrdGlobal = path.join(home, ".codex", "skills", "prd");
     const checks = [
       {
         label: "Git Bash",
@@ -535,15 +600,37 @@ async function main() {
         detail: codexSkills,
       },
       {
+        label: "PRD skill (local Codex)",
+        ok: exists(codexPrdLocal),
+        detail: codexPrdLocal,
+      },
+      {
+        label: "PRD skill (global Codex)",
+        ok: exists(codexPrdGlobal),
+        detail: codexPrdGlobal,
+      },
+      {
         label: "Local templates",
         ok: exists(localDir),
         detail: localDir,
+      },
+      {
+        label: "Plan candidates in cwd",
+        ok: true,
+        detail: detectedPlans.length
+          ? detectedPlans.map((candidate) => path.relative(cwd, candidate)).join(", ")
+          : "none",
       },
     ];
     for (const check of checks) {
       console.log(`${check.ok ? "OK " : "!! "} ${check.label}: ${check.detail}`);
     }
-    const ok = checks.every((check) => check.ok || check.label === "Local templates");
+    const ok = checks.every((check) =>
+      check.ok ||
+      check.label === "Local templates" ||
+      check.label === "PRD skill (local Codex)" ||
+      check.label === "Plan candidates in cwd",
+    );
     process.exit(ok ? 0 : 1);
   }
 
@@ -554,6 +641,7 @@ async function main() {
   }
   if (templateDir === localDir) {
     console.log(`Using local templates: ${localDir}`);
+    console.log("Local templates override bundled global templates for this repo.");
   } else {
     console.log(`Using bundled templates: ${globalDir}`);
   }
@@ -744,6 +832,7 @@ async function main() {
     const outputPath = prdOutPath || prdPath || defaultPrdOutputPath(cwd, request);
     env.PRD_PATH = outputPath;
     const agentName = agentOverride || defaultAgent;
+    ensureRequiredSkill(agentName, "prd", cwd);
     const prdAgent = agentInteractiveMap[agentName] || agentMap[agentName];
     if (prdAgent) {
       env.PRD_AGENT_CMD = prdAgent;

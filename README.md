@@ -68,6 +68,8 @@ Install skills:
 ralph install --skills
 ```
 
+If you use the global Ralph install, install skills for the same agent scope you actually use. For Codex, the `prd` skill must exist before `ralph prd` can generate PRDs reliably.
+
 Reinstall bundled skills even if they already exist:
 
 ```bash
@@ -122,6 +124,8 @@ If you run `ralph prd` with no inline request and no `--plan`, Ralph will look f
 
 If one or more of those files exist in the current repo, Ralph will offer to use one of them before falling back to manual entry.
 
+If no plan files are found, Ralph now prints the working directory and the exact search patterns it checked.
+
 Run one iteration:
 
 ```bash
@@ -170,6 +174,12 @@ Check local prerequisites:
 ```bash
 ralph doctor
 ```
+
+`ralph doctor` now also reports:
+
+- whether the `prd` skill exists for Codex in local or global skill locations
+- whether local templates are overriding bundled global templates
+- which plan files, if any, were detected in the current working directory
 
 ## Tiny Task Mode
 
