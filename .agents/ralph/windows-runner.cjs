@@ -639,10 +639,6 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
       if (!quietMode) {
         process.stdout.write(text);
       }
-      if (text.includes(completeMarker)) {
-        completionSeen = true;
-        completionIdleMs = 0;
-      }
       idleSeconds = 0;
       lastIdleNoticeBucket = 0;
       hangWarned = false;
@@ -661,7 +657,14 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
     const heartbeat = setInterval(() => {
       if (!quietMode) return;
       idleSeconds += heartbeatSeconds;
-      if (completionSeen) completionIdleMs += heartbeatSeconds * 1000;
+      if (hasCompletionMarker(logFile)) {
+        if (!completionSeen) {
+          completionIdleMs = 0;
+        } else {
+          completionIdleMs += heartbeatSeconds * 1000;
+        }
+        completionSeen = true;
+      }
       if (completionSeen && completeGraceMs > 0 && completionIdleMs >= completeGraceMs && !completedAndTerminated) {
         if (!printed) {
           process.stdout.write(label);
