@@ -60,6 +60,7 @@ const browserVisibility = process.env.RALPH_BROWSER_VISIBILITY || "headless";
 const runTag = process.env.RUN_TAG || `${formatCompactDate(new Date())}-${process.pid}`;
 
 const completeMarker = "<promise>COMPLETE</promise>";
+const completeMarkerTailBytes = Number(process.env.RALPH_COMPLETE_MARKER_TAIL_BYTES || "4096");
 const completeGraceMs = Number(process.env.RALPH_COMPLETE_GRACE_SECONDS || "15") * 1000;
 const heartbeatSeconds = Number(process.env.RALPH_QUIET_HEARTBEAT_SECONDS || "5");
 const idleNoticeSeconds = Number(process.env.RALPH_QUIET_IDLE_NOTICE_SECONDS || "30");
@@ -506,6 +507,20 @@ function extractRunInstructions(logFile) {
   return "";
 }
 
+function readLogTail(logFile, maxBytes = completeMarkerTailBytes) {
+  if (!exists(logFile)) return "";
+  const stats = fs.statSync(logFile);
+  const start = Math.max(0, stats.size - maxBytes);
+  const fd = fs.openSync(logFile, "r");
+  try {
+    const buffer = Buffer.alloc(stats.size - start);
+    fs.readSync(fd, buffer, 0, buffer.length, start);
+    return buffer.toString("utf-8");
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function printRunInstructions(logFile) {
   const instructions = extractRunInstructions(logFile);
   if (!instructions) return;
@@ -514,8 +529,7 @@ function printRunInstructions(logFile) {
 }
 
 function hasCompletionMarker(logFile) {
-  if (!exists(logFile)) return false;
-  return fs.readFileSync(logFile, "utf-8").includes(completeMarker);
+  return readLogTail(logFile).includes(completeMarker);
 }
 
 async function promptInterruptAction(storyId, completePresent) {

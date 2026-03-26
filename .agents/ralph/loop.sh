@@ -40,6 +40,7 @@ DEFAULT_NO_COMMIT=false
 DEFAULT_STALE_SECONDS=300
 DEFAULT_PROGRESS_TAIL_LINES=20
 DEFAULT_TINY_TASK_STORY_MAX=3
+DEFAULT_COMPLETE_MARKER_TAIL_BYTES=4096
 PRD_REQUEST_PATH=""
 PRD_INLINE=""
 QUIET_MODE="${RALPH_QUIET:-0}"
@@ -88,6 +89,7 @@ NO_COMMIT="${NO_COMMIT:-$DEFAULT_NO_COMMIT}"
 STALE_SECONDS="${STALE_SECONDS:-$DEFAULT_STALE_SECONDS}"
 PROGRESS_TAIL_LINES="${PROGRESS_TAIL_LINES:-$DEFAULT_PROGRESS_TAIL_LINES}"
 TINY_TASK_STORY_MAX="${TINY_TASK_STORY_MAX:-$DEFAULT_TINY_TASK_STORY_MAX}"
+COMPLETE_MARKER_TAIL_BYTES="${RALPH_COMPLETE_MARKER_TAIL_BYTES:-$DEFAULT_COMPLETE_MARKER_TAIL_BYTES}"
 TINY_TASK_MODE_OVERRIDE="${TINY_TASK_MODE_OVERRIDE:-}"
 BROWSER_VISIBILITY="${RALPH_BROWSER_VISIBILITY:-headless}"
 RUN_TAG="$(date +%Y%m%d-%H%M%S)-$$"
@@ -232,12 +234,12 @@ run_quiet_with_heartbeat() {
         hang_warned="false"
         complete_idle_seconds=0
         complete_warned="false"
-        if [ "$complete_seen" = "false" ] && [ -f "$log_file" ] && grep -q "<promise>COMPLETE</promise>" "$log_file"; then
+        if [ "$complete_seen" = "false" ] && log_tail_contains_complete_marker "$log_file"; then
           complete_seen="true"
         fi
       else
         idle_seconds=$((idle_seconds + interval))
-        if [ "$complete_seen" = "false" ] && [ -f "$log_file" ] && grep -q "<promise>COMPLETE</promise>" "$log_file"; then
+        if [ "$complete_seen" = "false" ] && log_tail_contains_complete_marker "$log_file"; then
           complete_seen="true"
           complete_idle_seconds=0
         elif [ "$complete_seen" = "true" ]; then
@@ -334,9 +336,17 @@ print_run_instructions() {
   printf "%s\n" "$instructions"
 }
 
+log_tail_contains_complete_marker() {
+  local log_file="$1"
+  if [ ! -f "$log_file" ]; then
+    return 1
+  fi
+  tail -c "$COMPLETE_MARKER_TAIL_BYTES" "$log_file" 2>/dev/null | grep -q "<promise>COMPLETE</promise>"
+}
+
 has_completion_marker() {
   local log_file="$1"
-  [ -f "$log_file" ] && grep -q "<promise>COMPLETE</promise>" "$log_file"
+  log_tail_contains_complete_marker "$log_file"
 }
 
 prompt_interrupt_action() {
@@ -1320,7 +1330,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       else
         echo "Iteration failed; story reset to open."
       fi
-    elif grep -q "<promise>COMPLETE</promise>" "$LOG_FILE"; then
+    elif has_completion_marker "$LOG_FILE"; then
       update_story_status "$STORY_ID" "done"
       if [ "$QUIET_MODE" = "1" ]; then
         quiet_echo "Build: story $STORY_ID complete"
