@@ -11,6 +11,7 @@ const repoRoot = path.resolve(__dirname, "..");
 const globalDir = path.join(repoRoot, ".agents", "ralph");
 const localDir = path.join(cwd, ".agents", "ralph");
 const skillsRoot = path.join(repoRoot, "skills");
+const codexBackendHelperPath = path.join(repoRoot, ".agents", "ralph", "codex-backend.cjs");
 let agentOverride = null;
 let installSkills = false;
 let installForce = false;
@@ -19,6 +20,7 @@ let prdPath = null;
 let progressPath = null;
 let prdOutPath = null;
 let tinyMode = false;
+let barebonesMode = false;
 let planPath = null;
 let quietMode = false;
 let showBrowser = false;
@@ -30,6 +32,11 @@ function exists(p) {
   } catch {
     return false;
   }
+}
+
+function loadCodexBackendHelper() {
+  if (!exists(codexBackendHelperPath)) return null;
+  return require(codexBackendHelperPath);
 }
 
 function readPackageMeta() {
@@ -81,7 +88,7 @@ Commands:
   ping                                Minimal agent health check
   doctor                              Check Ralph runner prerequisites
   log "<message>"                     Append to .ralph/activity.log
-  build [n] [--no-commit] [--tiny] [--quiet] [--show-browser]  Run build loop (default)
+  build [n] [--no-commit] [--tiny] [--barebones] [--quiet] [--show-browser]  Run build loop (default)
   overview                            Render a human overview from PRD JSON
   help                                Show this message
 
@@ -91,6 +98,7 @@ Options:
   --out <path>                        Override PRD output path (prd command)
   --progress <path>                   Override progress log path
   --tiny                              Force tiny-task prompt mode for build runs
+  --barebones                         Minimal single-story-biased build mode with the lightest acceptable verification
   --quiet                             Terse terminal output; full logs stay on disk
   --show-browser                      For browser verification, allow a visible browser window instead of preferring headless checks
   --force-skills                      Reinstall bundled skills even if they exist
@@ -100,6 +108,7 @@ Notes:
 - Uses local .agents/ralph if present; otherwise uses bundled defaults.
 - State and logs are written to .ralph/ in the project.
 - Browser verification still happens by default for frontend work. --show-browser only changes browser visibility for those checks.
+- --barebones defaults build runs to one iteration unless you pass an explicit iteration count.
 `);
 }
 
@@ -257,6 +266,29 @@ function resolveOptionalModule(moduleName) {
   }
 }
 
+async function resolveCodexBackendDiagnostics(overrides = {}) {
+  const helper = loadCodexBackendHelper();
+  if (!helper) {
+    return {
+      requested: "auto",
+      selected: "cli",
+      sdkAvailable: false,
+      sdkDetail: "backend helper missing",
+      fallbackReason: "backend helper missing",
+      error: "",
+    };
+  }
+  return helper.resolveCodexBackend({
+    platform: process.platform,
+    env: {
+      ...process.env,
+      RALPH_AGENT_KIND: "codex",
+      RALPH_AGENT_COMMAND_SOURCE: process.env.AGENT_CMD ? "env" : "map",
+      ...overrides,
+    },
+  });
+}
+
 function runLoop(loopPath, loopArgs, options) {
   if (process.platform === "win32") {
     const nativeRunner = path.join(path.dirname(loopPath), "windows-runner.cjs");
@@ -306,6 +338,9 @@ async function resolvePrdPath({ cwd, explicitPath, label }) {
   if (candidates.length === 1) {
     return candidates[0];
   }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return candidates[0];
+  }
   const { intro, select, outro, isCancel } = await import("@clack/prompts");
   intro(label || "Select PRD");
   const selection = await select({
@@ -336,6 +371,9 @@ async function resolvePlanPath({ cwd, explicitPath }) {
   if (candidates.length === 0) {
     printPlanSearchDiagnostics(cwd, candidates);
     return null;
+  }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return candidates[0];
   }
   if (candidates.length === 1) {
     const candidate = candidates[0];
@@ -396,6 +434,10 @@ for (let i = 0; i < rawArgs.length; i += 1) {
   }
   if (arg === "--tiny") {
     tinyMode = true;
+    continue;
+  }
+  if (arg === "--barebones") {
+    barebonesMode = true;
     continue;
   }
   if (arg === "--quiet") {
@@ -501,7 +543,7 @@ async function runInstallSkills() {
             ? path.join(home, ".local", "share", "opencode", "skills")
             : path.join(cwd, ".opencode", "skills");
 
-  const skillsToInstall = ["commit", "dev-browser", "prd"];
+  const skillsToInstall = ["commit", "dev-browser", "prd", "prdtest01", "prdtest02", "prdtest03", "prdtest04", "prdtest05"];
   fs.mkdirSync(targetRoot, { recursive: true });
   const installed = [];
   const skipped = [];
@@ -603,6 +645,7 @@ async function main() {
     const pythonVersion = commandOutput("python", ["--version"]);
     const gitBashPythonVersion = spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" });
     const playwrightPackage = resolveOptionalModule("playwright");
+    const codexBackend = await resolveCodexBackendDiagnostics();
     const checks = [
       {
         label: "Git Bash (optional helpers)",
@@ -613,6 +656,21 @@ async function main() {
         label: "Codex CLI",
         ok: commandExists("codex"),
         detail: codexVersion.stdout?.trim() || codexVersion.stderr?.trim() || "not found",
+      },
+      {
+        label: "Codex SDK package",
+        ok: codexBackend.sdkAvailable,
+        detail: codexBackend.sdkDetail || "not available",
+      },
+      {
+        label: "Codex backend selection",
+        ok: true,
+        detail: `${codexBackend.selected} (requested ${codexBackend.requested || "auto"})`,
+      },
+      {
+        label: "Codex backend fallback",
+        ok: true,
+        detail: codexBackend.error || codexBackend.fallbackReason || "none",
       },
       {
         label: "Python (PowerShell)",
@@ -672,6 +730,7 @@ async function main() {
     }
     const ok = checks.every((check) =>
       check.ok ||
+      check.label === "Codex SDK package" ||
       check.label === "Git Bash (optional helpers)" ||
       check.label === "Python3 (Git Bash, optional)" ||
       check.label === "Local templates" ||
@@ -699,16 +758,21 @@ async function main() {
     process.exit(1);
   }
 
-  const loopArgs = args.length ? args : ["build"];
+  const loopArgs = args.length ? [...args] : ["build"];
+  const hasExplicitBuildIterations =
+    loopArgs[0] === "build" && loopArgs.slice(1).some((value) => /^\d+$/.test(value));
+  if (barebonesMode && loopArgs[0] === "build" && !hasExplicitBuildIterations) {
+    loopArgs.splice(1, 0, "1");
+  }
   const loadAgentMap = () => {
     const defaults = {
-      codex: "codex exec --yolo --skip-git-repo-check -",
+      codex: "codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" -",
       claude: "claude -p --dangerously-skip-permissions \"$(cat {prompt})\"",
       droid: "droid exec --skip-permissions-unsafe -f {prompt}",
       opencode: "opencode run \"$(cat {prompt})\"",
     };
     const interactiveDefaults = {
-      codex: "codex exec --yolo --skip-git-repo-check {prompt}",
+      codex: "codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" {prompt}",
       claude: "claude --dangerously-skip-permissions {prompt}",
       droid: "droid --skip-permissions-unsafe {prompt}",
       opencode: "opencode --prompt {prompt}",
@@ -770,6 +834,8 @@ async function main() {
   const agentMap = agentDefs.headless;
   const agentInteractiveMap = agentDefs.interactive;
   const defaultAgent = agentDefs.defaultAgent || "codex";
+  const selectedAgent = agentOverride || defaultAgent;
+  const selectedAgentSource = agentOverride ? "map" : process.env.AGENT_CMD ? "env" : "map";
   if (agentOverride) {
     const mapped = agentMap[agentOverride];
     if (!mapped) {
@@ -785,6 +851,7 @@ async function main() {
   }
   if (progressPath) env.PROGRESS_PATH = progressPath;
   if (tinyMode) env.TINY_TASK_MODE_OVERRIDE = "true";
+  if (barebonesMode) env.BAREBONES_MODE_OVERRIDE = "true";
   if (quietMode) env.RALPH_QUIET = "1";
   if (showBrowser) env.RALPH_BROWSER_VISIBILITY = "show";
   if (templateDir === globalDir) {
@@ -792,9 +859,17 @@ async function main() {
     env.GUARDRAILS_REF = path.join(templateDir, "references", "GUARDRAILS.md");
     env.CONTEXT_REF = path.join(templateDir, "references", "CONTEXT_ENGINEERING.md");
   }
+  env.RALPH_AGENT_KIND = selectedAgent;
+  env.RALPH_AGENT_COMMAND_SOURCE = selectedAgentSource;
+  if (selectedAgent === "codex" && selectedAgentSource !== "env") {
+    env.RALPH_CODEX_MODEL_REASONING_EFFORT = env.RALPH_CODEX_MODEL_REASONING_EFFORT || "medium";
+    env.RALPH_CODEX_APPROVAL_POLICY = env.RALPH_CODEX_APPROVAL_POLICY || "never";
+    env.RALPH_CODEX_SANDBOX_MODE = env.RALPH_CODEX_SANDBOX_MODE || "danger-full-access";
+    env.RALPH_CODEX_SKIP_GIT_REPO_CHECK = env.RALPH_CODEX_SKIP_GIT_REPO_CHECK || "1";
+  }
 
   if (cmd === "ping") {
-    const agentName = agentOverride || defaultAgent;
+    const agentName = selectedAgent;
     const agentCmd = agentMap[agentName];
     if (!agentCmd) {
       console.error("Unknown agent for ping.");

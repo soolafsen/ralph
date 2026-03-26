@@ -4,6 +4,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const readline = require("readline");
+const { pathToFileURL } = require("url");
+const { resolveCodexBackend } = require(path.join(__dirname, "codex-backend.cjs"));
 
 const args = process.argv.slice(2);
 let mode = "build";
@@ -59,8 +61,10 @@ const stagedBrowserCheckHelperPath = path.join(stagedHelperDir, "browser-check.c
 const quietMode = String(process.env.RALPH_QUIET || "0") === "1";
 const staleSeconds = Number(process.env.STALE_SECONDS || "300");
 const progressTailLines = Number(process.env.PROGRESS_TAIL_LINES || "20");
+const progressContextEntryCount = Math.max(1, Number(process.env.PROGRESS_CONTEXT_ENTRY_COUNT || "1"));
 const tinyTaskStoryMax = Number(process.env.TINY_TASK_STORY_MAX || "3");
 const tinyTaskModeOverride = process.env.TINY_TASK_MODE_OVERRIDE || "";
+const barebonesModeOverride = process.env.BAREBONES_MODE_OVERRIDE || "";
 const browserVisibility = process.env.RALPH_BROWSER_VISIBILITY || "headless";
 const runTag = process.env.RUN_TAG || `${formatCompactDate(new Date())}-${process.pid}`;
 
@@ -73,11 +77,15 @@ const hangWarningSeconds = Number(process.env.RALPH_HANG_WARNING_SECONDS || "120
 
 let hasError = false;
 let activeChild = null;
+let activeAbortController = null;
 let interruptRequested = false;
 let forceKillRequested = false;
 
 process.on("SIGINT", () => {
   interruptRequested = true;
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
   if (activeChild?.pid) {
     killProcessTree(activeChild.pid, forceKillRequested);
     forceKillRequested = true;
@@ -86,6 +94,9 @@ process.on("SIGINT", () => {
 
 process.on("SIGTERM", () => {
   interruptRequested = true;
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
   if (activeChild?.pid) {
     killProcessTree(activeChild.pid, true);
   }
@@ -129,6 +140,17 @@ function formatCount(value) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+function formatTokenBreakdown(stats) {
+  if (!stats) return "";
+  const parts = [];
+  if (stats.uncachedInputTokens != null) parts.push(`uncached input ${formatCount(stats.uncachedInputTokens)}`);
+  if (stats.cachedInputTokens != null) parts.push(`cached input ${formatCount(stats.cachedInputTokens)}`);
+  if (stats.outputTokens != null) parts.push(`output ${formatCount(stats.outputTokens)}`);
+  if (stats.reasoningOutputTokens != null) parts.push(`reasoning ${formatCount(stats.reasoningOutputTokens)}`);
+  if (stats.inputTokens != null) parts.push(`raw input ${formatCount(stats.inputTokens)}`);
+  return parts.join(" | ");
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -142,6 +164,16 @@ function ensureFile(filePath, content) {
 
 function escapeJsString(value) {
   return JSON.stringify(String(value));
+}
+
+function measureText(text) {
+  const value = String(text || "");
+  const trimmed = value.trim();
+  return {
+    bytes: Buffer.byteLength(value, "utf-8"),
+    lines: value ? value.split(/\r?\n/).length : 0,
+    words: trimmed ? trimmed.split(/\s+/).length : 0,
+  };
 }
 
 function stageHelperWrappers() {
@@ -252,14 +284,62 @@ function parseConfigShell(filePath) {
   return result;
 }
 
+function extractProgressSection(entryText, heading) {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = entryText.match(new RegExp(`^${escaped}:\\r?\\n([\\s\\S]*?)(?=^\\S[^\\r\\n]*:\\r?$|^---$|\\Z)`, "m"));
+  if (!match) return [];
+  return String(match[1] || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "));
+}
+
+function summarizeVerification(entryText) {
+  const lines = extractProgressSection(entryText, "Verification");
+  if (!lines.length) return "";
+  const passCount = lines.filter((line) => /->\s*PASS\b/i.test(line)).length;
+  const failCount = lines.filter((line) => /->\s*FAIL\b/i.test(line)).length;
+  const otherCount = Math.max(0, lines.length - passCount - failCount);
+  const parts = [];
+  if (passCount) parts.push(`${passCount} pass`);
+  if (failCount) parts.push(`${failCount} fail`);
+  if (otherCount) parts.push(`${otherCount} other`);
+  return parts.join(", ");
+}
+
+function summarizeProgressEntry(entryLines) {
+  const entryText = entryLines.join("\n").trim();
+  if (!entryText) return "";
+  const header = entryLines[0] || "## Progress";
+  const outcome = extractProgressSection(entryText, "Outcome");
+  const notes = extractProgressSection(entryText, "Notes");
+  const verification = summarizeVerification(entryText);
+  const lines = [header];
+  if (verification) {
+    lines.push(`Verification: ${verification}`);
+  }
+  if (outcome.length) {
+    lines.push("Outcome:");
+    lines.push(...outcome);
+  }
+  if (notes.length) {
+    lines.push("Notes:");
+    lines.push(...notes.slice(0, 3));
+  }
+  return lines.join("\n");
+}
+
 function buildProgressContext(dstPath, tinyMode) {
+  let output = "# Progress Snapshot\n\n";
   if (tinyMode === "true") {
-    fs.writeFileSync(dstPath, "# Progress Snapshot\n\n(skip for tiny task)\n");
-    return;
+    output += "(skip for tiny task)\n";
+    fs.writeFileSync(dstPath, output);
+    return measureText(output);
   }
   if (!exists(progressPath)) {
-    fs.writeFileSync(dstPath, "# Progress Snapshot\n\n(none)\n");
-    return;
+    output += "(none)\n";
+    fs.writeFileSync(dstPath, output);
+    return measureText(output);
   }
   const lines = fs.readFileSync(progressPath, "utf-8").split(/\r?\n/);
   const entries = [];
@@ -275,12 +355,18 @@ function buildProgressContext(dstPath, tinyMode) {
   if (current.length) entries.push(current);
   let text = "";
   if (entries.length) {
-    text = entries.slice(-2).map((entry) => entry.join("\n").trim()).filter(Boolean).join("\n\n");
-  } else {
-    text = lines.slice(-progressTailLines).join("\n").trim();
+    text = entries
+      .slice(-progressContextEntryCount)
+      .map((entry) => summarizeProgressEntry(entry))
+      .filter(Boolean)
+      .join("\n\n");
   }
-  if (!text) text = "(none)";
-  fs.writeFileSync(dstPath, `# Progress Snapshot\n\n${text}\n`);
+  if (!text) {
+    text = lines.slice(-progressTailLines).join("\n").trim() || "(none)";
+  }
+  output += `${text}\n`;
+  fs.writeFileSync(dstPath, output);
+  return measureText(output);
 }
 
 function selectStory(metaOut, blockOut) {
@@ -402,7 +488,7 @@ function updateStoryStatus(storyId, newStatus) {
   writeJson(prdPath, data);
 }
 
-function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressContextPath, tinyTaskMode, iteration, runLog, runMetaPath) {
+function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressContextPath, tinyTaskMode, barebonesMode, iteration, runLog, runMetaPath) {
   let src = fs.readFileSync(srcPath, "utf-8");
   let meta = {};
   try {
@@ -420,6 +506,7 @@ function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressC
     ERRORS_LOG_PATH: errorsLogPath,
     NO_COMMIT: String(noCommit),
     TINY_TASK_MODE: tinyTaskMode,
+    BAREBONES_MODE: barebonesMode,
     RUN_ID: runTag,
     ITERATION: String(iteration),
     RUN_LOG_PATH: runLog,
@@ -439,6 +526,7 @@ function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressC
     src = src.replaceAll(`{{${key}}}`, value);
   }
   fs.writeFileSync(dstPath, src);
+  return measureText(src);
 }
 
 function logActivity(message) {
@@ -507,10 +595,22 @@ function writeRunMeta(metaPath, payload) {
     `- Started: ${payload.started}`,
     `- Ended: ${payload.ended}`,
     `- Duration: ${payload.duration}s`,
-    `- Tokens: ${payload.tokens == null ? "unknown" : formatCount(payload.tokens)}`,
+    `- Price-ish Tokens: ${payload.tokens == null ? "unknown" : formatCount(payload.tokens)}`,
     `- Status: ${payload.status}`,
+    `- Backend: ${payload.backend || "cli"}`,
     `- Log: ${payload.logFile}`,
     "",
+  );
+  if (payload.tokenStats) {
+    lines.push("## Tokens", `- Price-ish Total: ${formatCount(payload.tokenStats.priceishTokens || payload.tokenStats.totalTokens)}`);
+    if (payload.tokenStats.uncachedInputTokens != null) lines.push(`- Uncached Input: ${formatCount(payload.tokenStats.uncachedInputTokens)}`);
+    if (payload.tokenStats.outputTokens != null) lines.push(`- Output: ${formatCount(payload.tokenStats.outputTokens)}`);
+    if (payload.tokenStats.reasoningOutputTokens != null) lines.push(`- Reasoning Output: ${formatCount(payload.tokenStats.reasoningOutputTokens)}`);
+    if (payload.tokenStats.cachedInputTokens != null) lines.push(`- Cached Input: ${formatCount(payload.tokenStats.cachedInputTokens)}`);
+    if (payload.tokenStats.inputTokens != null) lines.push(`- Raw Input: ${formatCount(payload.tokenStats.inputTokens)}`);
+    lines.push("");
+  }
+  lines.push(
     "## Git",
     `- Head (before): ${payload.headBefore || "unknown"}`,
     `- Head (after): ${payload.headAfter || "unknown"}`,
@@ -525,7 +625,40 @@ function writeRunMeta(metaPath, payload) {
     payload.dirtyFiles || "- (clean)",
     "",
   );
+  if (payload.promptMetrics || payload.phaseMetrics || payload.logMetrics) {
+    lines.push("## Metrics", "");
+    if (payload.promptMetrics) {
+      lines.push(
+        `- Prompt: ${formatCount(payload.promptMetrics.bytes)} bytes, ${formatCount(payload.promptMetrics.words)} words, ${formatCount(payload.promptMetrics.lines)} lines`,
+        `- Story Block: ${formatCount(payload.promptMetrics.storyBlockBytes)} bytes, ${formatCount(payload.promptMetrics.storyBlockWords)} words`,
+        `- Progress Snapshot: ${formatCount(payload.promptMetrics.progressBytes)} bytes, ${formatCount(payload.promptMetrics.progressWords)} words`,
+        "",
+      );
+    }
+    if (payload.phaseMetrics) {
+      lines.push(
+        "### Timing",
+        `- Story Selection: ${payload.phaseMetrics.storySelectionMs}ms`,
+        `- Progress Snapshot: ${payload.phaseMetrics.progressSnapshotMs}ms`,
+        `- Prompt Render: ${payload.phaseMetrics.promptRenderMs}ms`,
+        `- Agent Run: ${payload.phaseMetrics.agentRunMs}ms`,
+        `- Postprocess: ${payload.phaseMetrics.postprocessMs}ms`,
+        "",
+      );
+    }
+    if (payload.logMetrics) {
+      lines.push(
+        "### Output",
+        `- Log Size: ${formatCount(payload.logMetrics.logBytes)} bytes`,
+        "",
+      );
+    }
+  }
   fs.writeFileSync(metaPath, `${lines.join("\n")}\n`);
+}
+
+function writeRunMetrics(metricsPath, payload) {
+  fs.writeFileSync(metricsPath, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function extractRunInstructions(logFile) {
@@ -604,6 +737,101 @@ function extractTokensUsed(logFile) {
   return Number.isFinite(value) ? value : null;
 }
 
+function extractSessionId(logFile) {
+  if (!exists(logFile)) return "";
+  const text = fs.readFileSync(logFile, "utf-8");
+  const match = text.match(/^session id:\s*([^\r\n]+)$/mi);
+  return match ? String(match[1] || "").trim() : "";
+}
+
+const codexSessionFileCache = new Map();
+
+function findCodexSessionFile(sessionId) {
+  if (!sessionId) return "";
+  if (codexSessionFileCache.has(sessionId)) {
+    return codexSessionFileCache.get(sessionId);
+  }
+  const sessionsRoot = path.join(os.homedir(), ".codex", "sessions");
+  if (!exists(sessionsRoot)) {
+    codexSessionFileCache.set(sessionId, "");
+    return "";
+  }
+  const queue = [sessionsRoot];
+  while (queue.length) {
+    const current = queue.shift();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        queue.push(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(`${sessionId}.jsonl`)) {
+        codexSessionFileCache.set(sessionId, fullPath);
+        return fullPath;
+      }
+    }
+  }
+  codexSessionFileCache.set(sessionId, "");
+  return "";
+}
+
+function extractTokenStatsFromSession(sessionFile) {
+  if (!sessionFile || !exists(sessionFile)) return null;
+  const lines = fs.readFileSync(sessionFile, "utf-8").split(/\r?\n/);
+  let latest = null;
+  for (const line of lines) {
+    if (!line.includes("\"type\":\"token_count\"") || !line.includes("\"total_token_usage\"")) continue;
+    try {
+      const data = JSON.parse(line);
+      const usage = data?.payload?.info?.total_token_usage;
+      if (!usage) continue;
+      const inputTokens = Number(usage.input_tokens || 0);
+      const cachedInputTokens = Number(usage.cached_input_tokens || 0);
+      const outputTokens = Number(usage.output_tokens || 0);
+      const reasoningOutputTokens = Number(usage.reasoning_output_tokens || 0);
+      const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+      const priceishTokens = uncachedInputTokens + outputTokens + reasoningOutputTokens;
+      latest = {
+        inputTokens,
+        cachedInputTokens,
+        uncachedInputTokens,
+        outputTokens,
+        reasoningOutputTokens,
+        priceishTokens,
+        totalTokens: priceishTokens,
+        rawTotalTokens: Number(usage.total_tokens || 0),
+      };
+    } catch {}
+  }
+  return latest;
+}
+
+function extractTokenStats(logFile) {
+  const sessionId = extractSessionId(logFile);
+  const sessionFile = findCodexSessionFile(sessionId);
+  const detailed = extractTokenStatsFromSession(sessionFile);
+  if (detailed) {
+    return detailed;
+  }
+  const totalTokens = extractTokensUsed(logFile);
+  if (totalTokens == null) return null;
+  return {
+    inputTokens: null,
+    cachedInputTokens: null,
+    uncachedInputTokens: null,
+    outputTokens: null,
+    reasoningOutputTokens: null,
+    totalTokens,
+    rawTotalTokens: totalTokens,
+  };
+}
+
 function readLogTail(logFile, maxBytes = completeMarkerTailBytes) {
   if (!exists(logFile)) return "";
   const stats = fs.statSync(logFile);
@@ -677,6 +905,26 @@ function killProcessTree(pid, force) {
   });
 }
 
+async function resolveCodexBackendForRun() {
+  return resolveCodexBackend({
+    platform: process.platform,
+    env: process.env,
+  });
+}
+
+async function requireConfiguredAgent(agentCommand) {
+  const backend = await resolveCodexBackendForRun();
+  if (backend.error) {
+    console.error(backend.error);
+    process.exit(1);
+  }
+  if (backend.selected === "sdk") {
+    return backend;
+  }
+  requireAgent(agentCommand);
+  return backend;
+}
+
 function createAgentSpawn(command, promptPath) {
   const parts = splitCommand(command);
   if (parts.length === 0) {
@@ -700,7 +948,7 @@ function createAgentSpawn(command, promptPath) {
   };
 }
 
-function runAgentCommand(agentCommand, promptPath, logFile, label) {
+function runCliAgentCommand(agentCommand, promptPath, logFile, label) {
   return new Promise((resolve) => {
     let child;
     try {
@@ -821,6 +1069,94 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
   });
 }
 
+async function runSdkAgentCommand(promptPath, logFile, label) {
+  const moduleUrl = pathToFileURL(path.join(scriptDir, "codex-sdk-runner.mjs")).href;
+  const { runCodexSdkTurn } = await import(moduleUrl);
+  return runCodexSdkTurn({
+    promptPath,
+    logFile,
+    label,
+    quietMode,
+    rootDir,
+    env: process.env,
+    completeMarker,
+    heartbeatSeconds,
+    idleNoticeSeconds,
+    hangWarningSeconds,
+    modelReasoningEffort: process.env.RALPH_CODEX_MODEL_REASONING_EFFORT || "medium",
+    model: process.env.RALPH_CODEX_MODEL || undefined,
+    onController(controller) {
+      activeAbortController = controller;
+    },
+  });
+}
+
+async function runAgentCommand(agentCommand, promptPath, logFile, label) {
+  const backend = await resolveCodexBackendForRun();
+  if (backend.error) {
+    fs.writeFileSync(logFile, `${backend.error}\n`);
+    return {
+      status: 1,
+      interrupted: false,
+      completedAndTerminated: false,
+      completed: false,
+      backend: "sdk",
+      tokenStats: null,
+    };
+  }
+
+  if (backend.selected === "sdk") {
+    try {
+      return {
+        ...(await runSdkAgentCommand(promptPath, logFile, label)),
+        backendInfo: backend,
+      };
+    } catch (error) {
+      const message = error && error.stack ? error.stack : String(error);
+      const allowFallback = backend.requested === "auto" && error && error.allowFallback;
+      ensureDir(path.dirname(logFile));
+      if (allowFallback) {
+        const fallbackMessage = `SDK unavailable, falling back to CLI: ${error.message || String(error)}`;
+        logActivity(`SDK fallback -> CLI (${error.message || String(error)})`);
+        if (quietMode) {
+          quietEcho(`Runner: ${fallbackMessage}`);
+        }
+        const cliResult = await runCliAgentCommand(agentCommand, promptPath, logFile, label);
+        fs.appendFileSync(logFile, `sdk startup error: ${message}\n`);
+        fs.appendFileSync(logFile, `${fallbackMessage}\n`);
+        return {
+          ...cliResult,
+          backend: "cli",
+          backendInfo: {
+            ...backend,
+            selected: "cli",
+            fallbackReason: error.message || String(error),
+          },
+          completed: hasCompletionMarker(logFile),
+          tokenStats: extractTokenStats(logFile),
+        };
+      }
+      return {
+        status: 1,
+        interrupted: false,
+        completedAndTerminated: false,
+        completed: false,
+        backend: "sdk",
+        backendInfo: backend,
+        tokenStats: null,
+      };
+    }
+  }
+
+  return {
+    ...(await runCliAgentCommand(agentCommand, promptPath, logFile, label)),
+    backend: "cli",
+    backendInfo: backend,
+    completed: hasCompletionMarker(logFile),
+    tokenStats: extractTokenStats(logFile),
+  };
+}
+
 async function runPrd() {
   const config = parseConfigShell(configPath);
   const prdAgentCommand = process.env.PRD_AGENT_CMD || process.env.AGENT_CMD || config.PRD_AGENT_CMD || config.AGENT_CMD || "codex exec --yolo --skip-git-repo-check -";
@@ -844,7 +1180,7 @@ async function runPrd() {
     process.exit(0);
   }
 
-  requireAgent(prdAgentCommand);
+  await requireConfiguredAgent(prdAgentCommand);
 
   const prdPromptFile = path.join(tmpDir, `prd-prompt-${Date.now()}.md`);
   const prdLogFile = path.join(runsDir, `prd-${runTag}.log`);
@@ -867,11 +1203,16 @@ async function runPrd() {
 
   if (quietMode) quietEcho("PRD: starting");
   const result = await runAgentCommand(prdAgentCommand, prdPromptFile, prdLogFile, "PRD: working");
-  const prdTokens = extractTokensUsed(prdLogFile);
+  const prdTokenStats = result.tokenStats || extractTokenStats(prdLogFile);
   if (quietMode) {
     quietEcho(result.status === 0 ? `PRD: complete (full log: ${prdLogFile})` : `PRD: failed (full log: ${prdLogFile})`);
-    if (prdTokens != null) {
-      quietEcho(`PRD: tokens ${formatCount(prdTokens)} (total ${formatCount(prdTokens)})`);
+    if (prdTokenStats) {
+      const prdPriceishTokens = prdTokenStats.priceishTokens || prdTokenStats.totalTokens;
+      quietEcho(`PRD: price-ish tokens ${formatCount(prdPriceishTokens)} (run total ${formatCount(prdPriceishTokens)})`);
+      const breakdown = formatTokenBreakdown(prdTokenStats);
+      if (breakdown) {
+        quietEcho(`PRD: token detail ${breakdown}`);
+      }
     }
   }
   process.exit(result.status);
@@ -891,10 +1232,18 @@ async function runBuild() {
   const config = parseConfigShell(configPath);
   const agentCommand = process.env.AGENT_CMD || config.AGENT_CMD || "codex exec --yolo --skip-git-repo-check -";
   if (process.env.RALPH_DRY_RUN !== "1") {
-    requireAgent(agentCommand);
+    await requireConfiguredAgent(agentCommand);
   }
   initializeFiles();
-  let cumulativeTokens = 0;
+  let cumulativeTokenStats = {
+    priceishTokens: 0,
+    totalTokens: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    uncachedInputTokens: 0,
+    outputTokens: 0,
+    reasoningOutputTokens: 0,
+  };
 
   if (quietMode) {
     quietEcho("Build: start");
@@ -916,7 +1265,10 @@ async function runBuild() {
 
     const storyMeta = path.join(tmpDir, `story-${runTag}-${iteration}.json`);
     const storyBlock = path.join(tmpDir, `story-${runTag}-${iteration}.md`);
+    const metricsFile = path.join(runsDir, `run-${runTag}-iter-${iteration}.metrics.json`);
+    const selectStart = Date.now();
     selectStory(storyMeta, storyBlock);
+    const storySelectionMs = Date.now() - selectStart;
     const meta = readJson(storyMeta);
     const remaining = String(meta.remaining ?? "unknown");
     if (remaining === "unknown") {
@@ -942,14 +1294,21 @@ async function runBuild() {
     const logFile = path.join(runsDir, `run-${runTag}-iter-${iteration}.log`);
     const runMeta = path.join(runsDir, `run-${runTag}-iter-${iteration}.md`);
     const tinyTaskMode = tinyTaskModeOverride || tinyTaskModeFromMeta(storyMeta);
-    buildProgressContext(progressContext, tinyTaskMode);
-    renderPrompt(promptFile, promptRendered, storyMeta, storyBlock, progressContext, tinyTaskMode, iteration, logFile, runMeta);
+    const barebonesMode = barebonesModeOverride ? "true" : "false";
+    const progressStart = Date.now();
+    const progressMetrics = buildProgressContext(progressContext, tinyTaskMode);
+    const progressSnapshotMs = Date.now() - progressStart;
+    const promptStart = Date.now();
+    const promptMetrics = renderPrompt(promptFile, promptRendered, storyMeta, storyBlock, progressContext, tinyTaskMode, barebonesMode, iteration, logFile, runMeta);
+    const promptRenderMs = Date.now() - promptStart;
+    const storyBlockMetrics = measureText(exists(storyBlock) ? fs.readFileSync(storyBlock, "utf-8") : "");
 
     logActivity(`ITERATION ${iteration} start (mode=${mode} story=${storyId})`);
     interruptRequested = false;
     forceKillRequested = false;
 
     let result;
+    const agentStart = Date.now();
     if (process.env.RALPH_DRY_RUN === "1") {
       fs.writeFileSync(logFile, "[RALPH_DRY_RUN] Skipping agent execution.\n");
       if (quietMode) quietEcho("Build: dry-run");
@@ -957,7 +1316,9 @@ async function runBuild() {
     } else {
       result = await runAgentCommand(agentCommand, promptRendered, logFile, "Build: working");
     }
+    const agentRunMs = Date.now() - agentStart;
 
+    const postprocessStart = Date.now();
     const iterEnd = Date.now();
     const iterEndFmt = formatLogDate(new Date(iterEnd));
     const iterDuration = Math.floor((iterEnd - iterStart) / 1000);
@@ -973,14 +1334,27 @@ async function runBuild() {
     const commitList = gitCommitList(headBefore, headAfter);
     const changedFiles = gitChangedFiles(headBefore, headAfter);
     const dirtyFiles = gitDirtyFiles();
-    const tokensUsed = extractTokensUsed(logFile);
-    if (tokensUsed != null) {
-      cumulativeTokens += tokensUsed;
+    const tokenStats = result.tokenStats || extractTokenStats(logFile);
+    const tokensUsed = tokenStats ? (tokenStats.priceishTokens || tokenStats.totalTokens) : null;
+    if (tokenStats) {
+      const stepPriceishTokens = tokenStats.priceishTokens || tokenStats.totalTokens;
+      cumulativeTokenStats = {
+        priceishTokens: cumulativeTokenStats.priceishTokens + stepPriceishTokens,
+        totalTokens: cumulativeTokenStats.totalTokens + stepPriceishTokens,
+        inputTokens: cumulativeTokenStats.inputTokens + Number(tokenStats.inputTokens || 0),
+        cachedInputTokens: cumulativeTokenStats.cachedInputTokens + Number(tokenStats.cachedInputTokens || 0),
+        uncachedInputTokens: cumulativeTokenStats.uncachedInputTokens + Number(tokenStats.uncachedInputTokens || 0),
+        outputTokens: cumulativeTokenStats.outputTokens + Number(tokenStats.outputTokens || 0),
+        reasoningOutputTokens: cumulativeTokenStats.reasoningOutputTokens + Number(tokenStats.reasoningOutputTokens || 0),
+      };
     }
+    const logBytes = exists(logFile) ? fs.statSync(logFile).size : 0;
     const statusLabel = interrupted ? "interrupted" : result.status !== 0 ? "error" : "success";
     if (!noCommit && dirtyFiles && !interrupted) {
       logError(`ITERATION ${iteration} left uncommitted changes; review run summary at ${runMeta}`);
     }
+
+    const postprocessMs = Date.now() - postprocessStart;
 
     writeRunMeta(runMeta, {
       runId: runTag,
@@ -992,19 +1366,70 @@ async function runBuild() {
       ended: iterEndFmt,
       duration: iterDuration,
       tokens: tokensUsed,
+      tokenStats,
       status: statusLabel,
+      backend: result.backend || "cli",
       logFile,
       headBefore,
       headAfter,
       commitList,
       changedFiles,
       dirtyFiles,
+      promptMetrics: {
+        bytes: promptMetrics.bytes,
+        words: promptMetrics.words,
+        lines: promptMetrics.lines,
+        storyBlockBytes: storyBlockMetrics.bytes,
+        storyBlockWords: storyBlockMetrics.words,
+        progressBytes: progressMetrics.bytes,
+        progressWords: progressMetrics.words,
+      },
+      phaseMetrics: {
+        storySelectionMs,
+        progressSnapshotMs,
+        promptRenderMs,
+        agentRunMs,
+        postprocessMs,
+      },
+      logMetrics: {
+        logBytes,
+      },
+    });
+
+    writeRunMetrics(metricsFile, {
+      runId: runTag,
+      iteration,
+      mode,
+      storyId,
+      storyTitle,
+      tokensUsed,
+      tokenStats,
+      status: statusLabel,
+      backend: result.backend || "cli",
+      prompt: {
+        bytes: promptMetrics.bytes,
+        words: promptMetrics.words,
+        lines: promptMetrics.lines,
+      },
+      storyBlock: storyBlockMetrics,
+      progressSnapshot: progressMetrics,
+      output: {
+        logBytes,
+      },
+      timing: {
+        storySelectionMs,
+        progressSnapshotMs,
+        promptRenderMs,
+        agentRunMs,
+        postprocessMs,
+        totalMs: iterEnd - iterStart,
+      },
     });
 
     appendRunSummary(`${formatLogDate(new Date())} | run=${runTag} | iter=${iteration} | mode=${mode} | story=${storyId} | duration=${iterDuration}s | tokens=${tokensUsed == null ? "unknown" : tokensUsed} | status=${statusLabel}`);
 
     if (interrupted) {
-      const completePresent = hasCompletionMarker(logFile);
+      const completePresent = result.completed ?? hasCompletionMarker(logFile);
       const interruptAction = await promptInterruptAction(storyId, completePresent);
       if (interruptAction === "next") {
         updateStoryStatus(storyId, "done");
@@ -1037,7 +1462,7 @@ async function runBuild() {
       } else {
         console.log("Iteration failed; story reset to open.");
       }
-    } else if (hasCompletionMarker(logFile)) {
+    } else if (result.completed ?? hasCompletionMarker(logFile)) {
       updateStoryStatus(storyId, "done");
       if (quietMode) {
         quietEcho(`Build: story ${storyId} complete`);
@@ -1057,8 +1482,12 @@ async function runBuild() {
     if (quietMode) {
       quietEcho(`Build: remaining stories ${remainingAfter}`);
       quietEcho(`Build: log ${logFile}`);
-      if (tokensUsed != null) {
-        quietEcho(`Build: tokens ${formatCount(tokensUsed)} (total ${formatCount(cumulativeTokens)})`);
+      if (tokenStats) {
+        quietEcho(`Build: step price-ish tokens ${formatCount(tokenStats.priceishTokens || tokenStats.totalTokens)} (build total ${formatCount(cumulativeTokenStats.priceishTokens || cumulativeTokenStats.totalTokens)})`);
+        const breakdown = formatTokenBreakdown(tokenStats);
+        if (breakdown) {
+          quietEcho(`Build: token detail ${breakdown}`);
+        }
       }
     } else {
       console.log(`Iteration ${iteration} complete. Remaining stories: ${remainingAfter}`);

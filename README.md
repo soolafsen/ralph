@@ -16,11 +16,13 @@ The main goals of this fork are:
 Compared with the upstream Ralph flow, this fork adds or changes:
 
 - Windows-native build and PRD supervision so Ralph can recover control even when agent output lingers after completion
+- a Windows-first Codex SDK backend that prefers structured turn events over raw log/session scraping, with automatic CLI fallback
 - first-class helper scripts for local browser verification and hidden Windows process handling
 - Bash fallback handling for helper scripts and compatibility paths
 - Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
 - slimmer build prompts with a compact progress snapshot instead of feeding large context every run
 - compact bundled PRD generation so build runs carry less narrative overhead
+- compact progress snapshots and per-run metrics so prompt growth and hot spots are visible
 - automatic stale story recovery defaults
 - automatic tiny-task prompting for very small PRDs
 - an explicit `--tiny` flag for build runs
@@ -93,6 +95,39 @@ The main skills are:
 - `prd`
 - `commit`
 - `dev-browser`
+- `prdtest01`
+- `prdtest02`
+- `prdtest03`
+- `prdtest04`
+- `prdtest05`
+
+The `prdtestNN` skills are fixed benchmark PRD generators. They let you recreate recognizable test PRDs on demand instead of keeping old PRD JSON files around.
+
+Examples:
+
+```bash
+ralph prd 'Use $prdtest01'
+ralph prd 'Use $prdtest02'
+ralph prd 'Use $prdtest03'
+ralph prd 'Use $prdtest04'
+ralph prd 'Use $prdtest05'
+```
+
+In PowerShell, use single quotes around skill triggers like `$prdtest01` so PowerShell does not expand them before Ralph sees the literal skill name.
+
+Benchmark meanings:
+
+- `prdtest01`: small React frontend benchmark
+- `prdtest02`: small Python CLI benchmark
+- `prdtest03`: small C# in-memory CRUD benchmark
+- `prdtest04`: intentionally cheap Node CLI benchmark for token and overhead checks
+- `prdtest05`: lightweight Node API benchmark for startup, run-instruction, and process-lifecycle checks
+
+Benchmark history in this repo uses **price-ish tokens** as the primary metric:
+
+- `price-ish = uncached input + output + reasoning`
+- cached input is stored separately as prompt reuse detail
+- raw input is stored separately as prompt footprint detail
 
 For local app verification during Ralph build runs, the bundled Ralph browser helper is now preferred over the persistent `dev-browser` relay server. The main path is a single `serve-and-run` helper call that starts the dev server, runs the headless Playwright check, and then tears the server down. The relay skill remains useful for remote or session-dependent websites.
 
@@ -171,6 +206,12 @@ Force tiny-task mode:
 ralph build 1 --tiny
 ```
 
+Run a minimal barebones loop:
+
+```bash
+ralph build --barebones
+```
+
 Choose a PRD explicitly:
 
 ```bash
@@ -201,6 +242,9 @@ ralph doctor
 - whether local templates are overriding bundled global templates
 - which plan files, if any, were detected in the current working directory
 - whether Ralph's built-in browser checker dependency is installed
+- whether `@openai/codex-sdk` is available
+- which Codex backend Ralph would select on this machine
+- why `auto` would fall back to the legacy CLI path
 
 ## Tiny Task Mode
 
@@ -235,6 +279,31 @@ What `--tiny` does not do:
 - it does not change git or `--no-commit` behavior
 - it does not reduce story count inside the PRD automatically
 
+## Barebones Mode
+
+Barebones mode is for the simplest possible Ralph loop when you want a minimal implementation pass and the lightest acceptable verification.
+
+You can enable it with:
+
+```bash
+ralph build --barebones
+ralph build 3 --barebones
+```
+
+Practical effects of `--barebones`:
+
+- defaults build runs to one iteration unless you pass an explicit iteration count
+- biases the agent toward the smallest viable story implementation
+- avoids tests, browser checks, package installs, and README churn unless the story or quality gates actually require them
+- keeps the loop file-based and story-based like normal Ralph
+
+What `--barebones` does not do:
+
+- it does not bypass PRD story selection
+- it does not ignore explicit quality gates
+- it does not change `--no-commit` behavior
+- it does not prevent you from running multiple iterations when you ask for them
+
 ## Quiet Mode
 
 Use `--quiet` when you want a short progress view in the terminal while keeping full logs on disk.
@@ -247,6 +316,7 @@ Quiet mode is intended to show only major stage changes, for example:
 - remaining story count
 - log file path
 - per-step token totals and cumulative token totals when available
+- per-step token breakdown when Codex session data is available: input, cached input, output, and reasoning output
 - end-of-run install or startup commands when Ralph can infer them
 
 The detailed agent output still goes to `.ralph/runs/`.
@@ -328,11 +398,29 @@ ralph build 1 --agent=codex
 
 The Codex defaults in this fork use `codex exec`.
 
+By default, Ralph now sets Codex `model_reasoning_effort` to `medium` for its bundled Codex commands. That keeps the default build loop from inheriting a globally configured `high` effort setting unless you explicitly override the agent command.
+
+You can override the Codex backend selection with:
+
+```bash
+set RALPH_CODEX_BACKEND=auto
+set RALPH_CODEX_BACKEND=sdk
+set RALPH_CODEX_BACKEND=cli
+```
+
+Backend meanings:
+
+- `auto`: prefer the SDK on Windows for Codex, then fall back to the legacy CLI path if the SDK is unavailable
+- `sdk`: require the SDK path and fail clearly if it cannot be loaded
+- `cli`: force the legacy `codex exec` orchestration path
+
 ## Windows Notes
 
 Important Windows-specific behavior in this fork:
 
 - `ralph build` and `ralph prd` use a native Node supervisor on Windows
+- on Windows with Codex, Ralph now prefers `@openai/codex-sdk` for structured events, token usage, and cancellation
+- if the SDK cannot be used and `RALPH_CODEX_BACKEND=auto`, Ralph falls back to the legacy CLI path and records the fallback
 - the supervisor watches for `<promise>COMPLETE</promise>` and can terminate lingering child trees after a short grace period
 - local frontend checks should use Ralph's direct Playwright helper in one-shot `serve-and-run` mode by default, not the persistent `dev-browser` relay
 - hidden long-running server helpers still exist, but they are secondary to the one-shot verification path for Codex on Windows
@@ -390,4 +478,10 @@ Real-agent loop test:
 
 ```bash
 npm run test:real
+```
+
+Analyze a Ralph run from a real project:
+
+```bash
+npm run benchmark:run -- C:\path\to\project
 ```
