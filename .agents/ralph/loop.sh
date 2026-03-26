@@ -341,7 +341,17 @@ log_tail_contains_complete_marker() {
   if [ ! -f "$log_file" ]; then
     return 1
   fi
-  tail -c "$COMPLETE_MARKER_TAIL_BYTES" "$log_file" 2>/dev/null | grep -q "<promise>COMPLETE</promise>"
+  tail -c "$COMPLETE_MARKER_TAIL_BYTES" "$log_file" 2>/dev/null | awk '
+    {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
+      if ($0 == "<promise>COMPLETE</promise>") {
+        found=1
+      }
+    }
+    END {
+      exit(found ? 0 : 1)
+    }
+  '
 }
 
 has_completion_marker() {

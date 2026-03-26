@@ -521,6 +521,15 @@ function readLogTail(logFile, maxBytes = completeMarkerTailBytes) {
   }
 }
 
+function tailHasStandaloneCompletionMarker(logFile) {
+  const tail = readLogTail(logFile);
+  if (!tail) return false;
+  return tail
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .some((line) => line === completeMarker);
+}
+
 function printRunInstructions(logFile) {
   const instructions = extractRunInstructions(logFile);
   if (!instructions) return;
@@ -529,7 +538,7 @@ function printRunInstructions(logFile) {
 }
 
 function hasCompletionMarker(logFile) {
-  return readLogTail(logFile).includes(completeMarker);
+  return tailHasStandaloneCompletionMarker(logFile);
 }
 
 async function promptInterruptAction(storyId, completePresent) {
