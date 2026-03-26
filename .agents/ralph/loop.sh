@@ -211,6 +211,29 @@ run_quiet_with_heartbeat() {
   return "$status"
 }
 
+extract_run_instructions() {
+  local log_file="$1"
+  if [ ! -f "$log_file" ]; then
+    return 0
+  fi
+  awk '
+    /<run_instructions>/ { capture=1; next }
+    /<\/run_instructions>/ { capture=0; exit }
+    capture { print }
+  ' "$log_file"
+}
+
+print_run_instructions() {
+  local log_file="$1"
+  local instructions
+  instructions="$(extract_run_instructions "$log_file")"
+  if [ -z "$instructions" ]; then
+    return 0
+  fi
+  echo "Run Instructions:"
+  printf "%s\n" "$instructions"
+}
+
 MODE="build"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -1110,6 +1133,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
       echo "Iteration $i complete. Remaining stories: $REMAINING"
     fi
     if [ "$REMAINING" = "0" ]; then
+      print_run_instructions "$LOG_FILE"
       if [ "$QUIET_MODE" = "1" ]; then
         quiet_echo "Build: complete"
       else
