@@ -787,7 +787,7 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
             process.stdout.write(`[${formatClockTime(new Date())}] ${label}`);
             printed = true;
           }
-          process.stdout.write(` [idle ${bucket * idleNoticeSeconds}s]`);
+          process.stdout.write(` [thinking ${bucket * idleNoticeSeconds}s]`);
           lastIdleNoticeBucket = bucket;
         }
       }
