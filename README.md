@@ -2,12 +2,12 @@
 
 ![Ralph](ralph.webp)
 
-Ralph is a file-based agent loop for autonomous coding. This fork is tuned specifically for **Codex**, **Windows**, and **Git Bash**.
+Ralph is a file-based agent loop for autonomous coding. This fork is tuned specifically for **Codex** and **Windows**, with Git Bash kept for helper workflows rather than the main Windows supervisor path.
 
 The main goals of this fork are:
 
 - work reliably with `codex exec`
-- run cleanly from Windows while invoking Git Bash for the shell loop
+- run cleanly from Windows with a native supervisor around long-running agent work
 - use slimmer prompts and less repeated context per iteration
 - keep the loop autonomous without dragging full chat history forward
 
@@ -15,7 +15,8 @@ The main goals of this fork are:
 
 Compared with the upstream Ralph flow, this fork adds or changes:
 
-- Windows launcher fixes so `.sh` loop scripts run through **Git Bash** instead of accidentally picking up WSL `bash`
+- Windows-native build and PRD supervision so Ralph can recover control even when agent output lingers after completion
+- Bash fallback handling for helper scripts and compatibility paths
 - Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
 - slimmer build prompts with a compact progress snapshot instead of feeding large context every run
 - compact bundled PRD generation so build runs carry less narrative overhead
@@ -31,11 +32,9 @@ This fork is tuned for:
 - Windows 11
 - PowerShell or `cmd.exe` as the outer shell
 - Git for Windows installed
-- Git Bash available at a standard Git install path
+- Git Bash available if you use Bash-specific helper scripts
 - Codex CLI installed globally
-- Python available as both `python` and `python3` inside Git Bash
-
-If your system resolves `bash` to WSL first, that is fine: Ralph will prefer Git Bash on Windows when launching the loop.
+- Python available in Windows if your repo workflow needs it
 
 ## Install
 
@@ -308,19 +307,19 @@ The Codex defaults in this fork use `codex exec`.
 
 Important Windows-specific behavior in this fork:
 
-- the loop script is launched through **Git Bash**
-- Windows paths are converted before being passed into Bash
+- `ralph build` and `ralph prd` use a native Node supervisor on Windows
+- the supervisor watches for `<promise>COMPLETE</promise>` and can terminate lingering child trees after a short grace period
 - shell scripts are normalized to LF in the repo
 - the loop banner uses ASCII output to avoid mojibake in Windows terminals
 
-If `ralph build` says Python is missing even though `python` works in PowerShell, check Git Bash:
+If you are using Bash-specific helpers and `python3` is missing there, check Git Bash:
 
 ```bash
 python3 --version
 command -v python3
 ```
 
-Ralph's shell loop uses `python3`, so that command must resolve inside Git Bash.
+That check is now optional for the main Windows runner.
 
 ## State Files
 
@@ -337,7 +336,7 @@ PRDs live in `.agents/tasks/`.
 
 ## Notes
 
-- This fork is intentionally optimized for the Codex + Windows + Git Bash workflow, not for being perfectly generic across every shell and agent combination.
+- This fork is intentionally optimized for the Codex + Windows workflow, not for being perfectly generic across every shell and agent combination.
 - The build prompt is slimmer than upstream and passes less repeated context per iteration.
 - For tiny one-off changes, direct Codex use may still be cheaper than Ralph.
 - Ralph makes the most sense for structured multi-step work where resumable state is useful.

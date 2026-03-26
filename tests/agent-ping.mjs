@@ -22,7 +22,9 @@ const agents = [
 const runnable = [];
 const skipped = [];
 for (const agent of agents) {
-  const check = spawnSync(`command -v ${agent.bin}`, { shell: true, stdio: "ignore" });
+  const check = process.platform === "win32"
+    ? spawnSync("where", [agent.bin], { stdio: "ignore" })
+    : spawnSync(`command -v ${agent.bin}`, { shell: true, stdio: "ignore" });
   if (check.status === 0) {
     runnable.push(agent.name);
   } else {

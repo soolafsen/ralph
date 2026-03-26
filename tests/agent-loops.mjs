@@ -2,8 +2,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, "bin", "ralph");
 
 function run(cmd, args, options = {}) {
@@ -15,7 +16,9 @@ function run(cmd, args, options = {}) {
 }
 
 function commandExists(cmd) {
-  const result = spawnSync(`command -v ${cmd}`, { shell: true, stdio: "ignore" });
+  const result = process.platform === "win32"
+    ? spawnSync("where", [cmd], { stdio: "ignore" })
+    : spawnSync(`command -v ${cmd}`, { shell: true, stdio: "ignore" });
   return result.status === 0;
 }
 

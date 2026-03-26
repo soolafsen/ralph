@@ -79,7 +79,7 @@ Commands:
   install [--skills] [--force] [--force-skills]  Copy .agents/ralph into the current repo
   prd ["<request>"] [--out path]      Generate a PRD (JSON) via agent
   ping                                Minimal agent health check
-  doctor                              Check Windows/Codex/Git Bash prerequisites
+  doctor                              Check Ralph runner prerequisites
   log "<message>"                     Append to .ralph/activity.log
   build [n] [--no-commit] [--tiny] [--quiet] [--show-browser]  Run build loop (default)
   overview                            Render a human overview from PRD JSON
@@ -234,6 +234,10 @@ function resolveBashExecutable() {
 
 function runLoop(loopPath, loopArgs, options) {
   if (process.platform === "win32") {
+    const nativeRunner = path.join(path.dirname(loopPath), "windows-runner.cjs");
+    if (exists(nativeRunner)) {
+      return spawnSync(process.execPath, [nativeRunner, ...loopArgs], options);
+    }
     const loopPathKeys = new Set([
       "RALPH_ROOT",
       "PRD_PATH",
@@ -572,7 +576,7 @@ async function main() {
     const codexPrdGlobal = path.join(home, ".codex", "skills", "prd");
     const checks = [
       {
-        label: "Git Bash",
+        label: "Git Bash (optional helpers)",
         ok: exists(bashExe),
         detail: exists(bashExe) ? bashExe : "not found",
       },
@@ -587,7 +591,7 @@ async function main() {
         detail: spawnSync("python", ["--version"], { encoding: "utf-8" }).stdout?.trim() || spawnSync("python", ["--version"], { encoding: "utf-8" }).stderr?.trim() || "not found",
       },
       {
-        label: "Python3 (Git Bash)",
+        label: "Python3 (Git Bash, optional)",
         ok: spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { stdio: "ignore" }).status === 0,
         detail: spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" }).stdout?.trim() || spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" }).stderr?.trim() || "not found",
       },
@@ -634,6 +638,8 @@ async function main() {
     }
     const ok = checks.every((check) =>
       check.ok ||
+      check.label === "Git Bash (optional helpers)" ||
+      check.label === "Python3 (Git Bash, optional)" ||
       check.label === "Local templates" ||
       check.label === "PRD skill (local Codex)" ||
       check.label === "Plan candidates in cwd",
