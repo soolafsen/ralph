@@ -325,6 +325,10 @@ PRDs live in `.agents/tasks/`.
 - For tiny one-off changes, direct Codex use may still be cheaper than Ralph.
 - Ralph makes the most sense for structured multi-step work where resumable state is useful.
 
+## Future Direction
+
+- [Multi-agent outline](docs/multi-agent-outline.md): a staged path from the current single-agent loop toward controlled multi-agent orchestration.
+
 ## Tests
 
 Dry-run smoke tests:
