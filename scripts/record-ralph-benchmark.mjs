@@ -101,11 +101,32 @@ function formatDelta(current, previous) {
   return `${sign}${formatCount(delta)}`;
 }
 
+function normalizeTokenStats(stats) {
+  const inputTokens = Number(stats?.inputTokens || 0);
+  const cachedInputTokens = Number(stats?.cachedInputTokens || 0);
+  const uncachedInputTokens = Number(stats?.uncachedInputTokens || 0);
+  const outputTokens = Number(stats?.outputTokens || 0);
+  const reasoningOutputTokens = Number(stats?.reasoningOutputTokens || 0);
+  const rawPriceish = Number(stats?.priceishTokens || stats?.totalTokens || 0);
+  const priceishTokens = rawPriceish || (uncachedInputTokens + outputTokens + reasoningOutputTokens);
+  return {
+    priceishTokens,
+    inputTokens,
+    cachedInputTokens,
+    uncachedInputTokens,
+    outputTokens,
+    reasoningOutputTokens,
+  };
+}
+
 function buildRecord(benchmarkId, definition, summary, notes) {
   const git = gitInfo();
   const firstLog = summary.iterations[0]?.logFile || "";
+  const prdTokenStats = normalizeTokenStats(summary.prdTokenStats || { priceishTokens: summary.prdTokens || 0 });
+  const buildTokenStats = normalizeTokenStats(summary.build.tokenStats || { priceishTokens: summary.build.priceishTokens || summary.build.totalTokens || 0 });
+  const totalPriceishTokens = prdTokenStats.priceishTokens + buildTokenStats.priceishTokens;
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     benchmarkId,
     benchmarkName: definition.name,
     skill: definition.skill,
@@ -117,9 +138,11 @@ function buildRecord(benchmarkId, definition, summary, notes) {
     reasoningEffort: extractField(firstLog, "reasoning effort") || "unknown",
     ralphBranch: git.branch,
     ralphCommit: git.commit,
-    prdTokens: summary.prdTokens ?? null,
-    buildTokens: summary.build.totalTokens,
-    totalTokens: summary.totals.totalTokens,
+    prdPriceishTokens: prdTokenStats.priceishTokens || null,
+    buildPriceishTokens: buildTokenStats.priceishTokens,
+    totalPriceishTokens,
+    prdTokenStats,
+    buildTokenStats,
     buildSeconds: summary.build.totalSeconds,
     buildIterations: summary.build.iterations,
     buildStarted: summary.build.started,
@@ -132,7 +155,7 @@ function buildRecord(benchmarkId, definition, summary, notes) {
       storyTitle: item.storyTitle,
       status: item.status,
       durationSeconds: item.durationSeconds,
-      tokens: item.tokens,
+      tokenStats: normalizeTokenStats(item.metrics?.tokenStats || { priceishTokens: item.tokens || 0 }),
     })),
   };
 }
@@ -158,9 +181,17 @@ function writeLatestMarkdown(record, previous) {
     `- Model: ${record.model}`,
     `- Reasoning Effort: ${record.reasoningEffort}`,
     `- Build Time: ${formatDuration(record.buildSeconds)}`,
-    `- PRD Tokens: ${record.prdTokens == null ? "unknown" : formatCount(record.prdTokens)}`,
-    `- Build Tokens: ${formatCount(record.buildTokens)}`,
-    `- Total Tokens: ${formatCount(record.totalTokens)}`,
+    `- PRD Price-ish Tokens: ${record.prdPriceishTokens == null ? "unknown" : formatCount(record.prdPriceishTokens)}`,
+    `- Build Price-ish Tokens: ${formatCount(record.buildPriceishTokens)}`,
+    `- End-to-end Price-ish Tokens: ${formatCount(record.totalPriceishTokens)}`,
+    "",
+    "## Token Detail",
+    "",
+    `- Build uncached input: ${formatCount(record.buildTokenStats.uncachedInputTokens)}`,
+    `- Build cached input: ${formatCount(record.buildTokenStats.cachedInputTokens)}`,
+    `- Build output: ${formatCount(record.buildTokenStats.outputTokens)}`,
+    `- Build reasoning: ${formatCount(record.buildTokenStats.reasoningOutputTokens)}`,
+    `- Build raw input footprint: ${formatCount(record.buildTokenStats.inputTokens)}`,
     "",
   ];
   if (previous) {
@@ -168,14 +199,14 @@ function writeLatestMarkdown(record, previous) {
       "## Delta Vs Previous",
       "",
       `- Build Time: ${formatDelta(record.buildSeconds, previous.buildSeconds)}s`,
-      `- Build Tokens: ${formatDelta(record.buildTokens, previous.buildTokens)}`,
-      `- Total Tokens: ${formatDelta(record.totalTokens, previous.totalTokens)}`,
+      `- Build Price-ish Tokens: ${formatDelta(record.buildPriceishTokens, previous.buildPriceishTokens)}`,
+      `- End-to-end Price-ish Tokens: ${formatDelta(record.totalPriceishTokens, previous.totalPriceishTokens)}`,
       "",
     );
   }
   lines.push("## Stories", "");
   for (const item of record.stories) {
-    lines.push(`- ${item.iteration}. ${item.storyId} | ${formatDuration(item.durationSeconds)} | ${formatCount(item.tokens || 0)} tokens | ${item.status}`);
+    lines.push(`- ${item.iteration}. ${item.storyId} | ${formatDuration(item.durationSeconds)} | ${formatCount(item.tokenStats.priceishTokens || 0)} price-ish tokens | ${item.status}`);
   }
   if (record.notes) {
     lines.push("", "## Notes", "", `- ${record.notes}`);
@@ -189,12 +220,13 @@ function printSummary(record, previous, historyFile, latestFile) {
   console.log(`Benchmark: ${record.benchmarkId} (${record.benchmarkName})`);
   console.log(`Run ID: ${record.runId}`);
   console.log(`Build Time: ${formatDuration(record.buildSeconds)}`);
-  console.log(`Build Tokens: ${formatCount(record.buildTokens)}`);
-  console.log(`Total Tokens: ${formatCount(record.totalTokens)}`);
+  console.log(`Build Price-ish Tokens: ${formatCount(record.buildPriceishTokens)}`);
+  console.log(`End-to-end Price-ish Tokens: ${formatCount(record.totalPriceishTokens)}`);
+  console.log(`Build Token Detail: uncached input ${formatCount(record.buildTokenStats.uncachedInputTokens)} | cached input ${formatCount(record.buildTokenStats.cachedInputTokens)} | output ${formatCount(record.buildTokenStats.outputTokens)} | reasoning ${formatCount(record.buildTokenStats.reasoningOutputTokens)} | raw input ${formatCount(record.buildTokenStats.inputTokens)}`);
   if (previous) {
     console.log(`Vs Previous Build Time: ${formatDelta(record.buildSeconds, previous.buildSeconds)}s`);
-    console.log(`Vs Previous Build Tokens: ${formatDelta(record.buildTokens, previous.buildTokens)}`);
-    console.log(`Vs Previous Total Tokens: ${formatDelta(record.totalTokens, previous.totalTokens)}`);
+    console.log(`Vs Previous Build Price-ish Tokens: ${formatDelta(record.buildPriceishTokens, previous.buildPriceishTokens)}`);
+    console.log(`Vs Previous End-to-end Price-ish Tokens: ${formatDelta(record.totalPriceishTokens, previous.totalPriceishTokens)}`);
   }
   console.log(`History: ${historyFile}`);
   console.log(`Latest: ${latestFile}`);

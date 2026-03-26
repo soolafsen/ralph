@@ -41,12 +41,20 @@ function readHistory(benchmarkId) {
     .map((line) => JSON.parse(line));
 }
 
+function getBuildPriceishTokens(item) {
+  return Number(item.buildPriceishTokens || item.buildTokens || 0);
+}
+
+function getTotalPriceishTokens(item) {
+  return Number(item.totalPriceishTokens || item.totalTokens || 0);
+}
+
 try {
   const { benchmarkId } = parseArgs(process.argv);
   const history = readHistory(benchmarkId);
   console.log(`Benchmark history: ${benchmarkId}`);
   for (const item of history) {
-    console.log(`- ${item.recordedAt} | ${item.ralphBranch}@${String(item.ralphCommit || "").slice(0, 7)} | ${item.backend} | ${formatDuration(item.buildSeconds)} | build ${formatCount(item.buildTokens)} | total ${formatCount(item.totalTokens)}`);
+    console.log(`- ${item.recordedAt} | ${item.ralphBranch}@${String(item.ralphCommit || "").slice(0, 7)} | ${item.backend} | ${formatDuration(item.buildSeconds)} | build ${formatCount(getBuildPriceishTokens(item))} price-ish | total ${formatCount(getTotalPriceishTokens(item))} price-ish`);
   }
 } catch (error) {
   console.error(error && error.message ? error.message : String(error));

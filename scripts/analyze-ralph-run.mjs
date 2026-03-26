@@ -179,20 +179,22 @@ export function extractTokenStats(logFile) {
         const outputTokens = Number(usage.output_tokens || 0);
         const reasoningOutputTokens = Number(usage.reasoning_output_tokens || 0);
         const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+        const priceishTokens = uncachedInputTokens + outputTokens + reasoningOutputTokens;
         latest = {
           inputTokens,
           cachedInputTokens,
           uncachedInputTokens,
           outputTokens,
           reasoningOutputTokens,
-          totalTokens: uncachedInputTokens + outputTokens,
+          priceishTokens,
+          totalTokens: priceishTokens,
         };
       } catch {}
     }
     if (latest) return latest;
   }
   const totalTokens = extractTokensUsed(logFile);
-  return totalTokens == null ? null : { totalTokens };
+  return totalTokens == null ? null : { priceishTokens: totalTokens, totalTokens };
 }
 
 export function summarizeRun(projectDir, runId) {
@@ -210,10 +212,12 @@ export function summarizeRun(projectDir, runId) {
   }
   const prdLog = findNearestPrdLog(runsDir, resolvedRunId);
   const prdTokenStats = extractTokenStats(prdLog);
-  const prdTokens = prdTokenStats?.totalTokens ?? extractTokensUsed(prdLog);
+  const prdTokens = prdTokenStats?.priceishTokens ?? prdTokenStats?.totalTokens ?? extractTokensUsed(prdLog);
   const buildTokenStats = iterations.reduce((acc, item) => {
     const stats = item.metrics?.tokenStats || extractTokenStats(item.logFile) || {};
-    acc.totalTokens += Number(stats.totalTokens || item.tokens || 0);
+    const priceishTokens = Number(stats.priceishTokens || stats.totalTokens || item.tokens || 0);
+    acc.priceishTokens += priceishTokens;
+    acc.totalTokens += Number(stats.totalTokens || priceishTokens);
     acc.inputTokens += Number(stats.inputTokens || 0);
     acc.cachedInputTokens += Number(stats.cachedInputTokens || 0);
     acc.uncachedInputTokens += Number(stats.uncachedInputTokens || 0);
@@ -221,6 +225,7 @@ export function summarizeRun(projectDir, runId) {
     acc.reasoningOutputTokens += Number(stats.reasoningOutputTokens || 0);
     return acc;
   }, {
+    priceishTokens: 0,
     totalTokens: 0,
     inputTokens: 0,
     cachedInputTokens: 0,
@@ -228,7 +233,7 @@ export function summarizeRun(projectDir, runId) {
     outputTokens: 0,
     reasoningOutputTokens: 0,
   });
-  const buildTokens = buildTokenStats.totalTokens;
+  const buildTokens = buildTokenStats.priceishTokens || buildTokenStats.totalTokens;
   const buildSeconds = iterations.reduce((sum, item) => sum + item.durationSeconds, 0);
   const withMetrics = iterations.filter((item) => item.metrics);
   const metricTotals = withMetrics.reduce((acc, item) => {
@@ -260,12 +265,14 @@ export function summarizeRun(projectDir, runId) {
     build: {
       iterations: iterations.length,
       totalSeconds: buildSeconds,
+      priceishTokens: buildTokens,
       totalTokens: buildTokens,
       tokenStats: buildTokenStats,
       started: iterations[0].started,
       ended: iterations[iterations.length - 1].ended,
     },
     totals: {
+      priceishTokens: buildTokens + (prdTokens || 0),
       totalTokens: buildTokens + (prdTokens || 0),
       totalSeconds: buildSeconds,
     },
@@ -283,16 +290,16 @@ export function printSummary(summary) {
   console.log(`Build: ${summary.build.started} -> ${summary.build.ended}`);
   console.log(`Iterations: ${summary.build.iterations}`);
   console.log(`Build Time: ${formatDuration(summary.build.totalSeconds)}`);
-  console.log(`Build Tokens: ${formatCount(summary.build.totalTokens)}`);
+  console.log(`Build Price-ish Tokens: ${formatCount(summary.build.priceishTokens)}`);
   if (summary.build.tokenStats.inputTokens) {
-    console.log(`Build Token Detail: input ${formatCount(summary.build.tokenStats.inputTokens)} | cached ${formatCount(summary.build.tokenStats.cachedInputTokens)} | output ${formatCount(summary.build.tokenStats.outputTokens)} | reasoning ${formatCount(summary.build.tokenStats.reasoningOutputTokens)}`);
+    console.log(`Build Token Detail: uncached input ${formatCount(summary.build.tokenStats.uncachedInputTokens)} | cached input ${formatCount(summary.build.tokenStats.cachedInputTokens)} | output ${formatCount(summary.build.tokenStats.outputTokens)} | reasoning ${formatCount(summary.build.tokenStats.reasoningOutputTokens)} | raw input ${formatCount(summary.build.tokenStats.inputTokens)}`);
   }
   if (summary.prdTokens != null) {
-    console.log(`PRD Tokens: ${formatCount(summary.prdTokens)}`);
+    console.log(`PRD Price-ish Tokens: ${formatCount(summary.prdTokens)}`);
     if (summary.prdTokenStats?.inputTokens) {
-      console.log(`PRD Token Detail: input ${formatCount(summary.prdTokenStats.inputTokens)} | cached ${formatCount(summary.prdTokenStats.cachedInputTokens)} | output ${formatCount(summary.prdTokenStats.outputTokens)} | reasoning ${formatCount(summary.prdTokenStats.reasoningOutputTokens)}`);
+      console.log(`PRD Token Detail: uncached input ${formatCount(summary.prdTokenStats.uncachedInputTokens)} | cached input ${formatCount(summary.prdTokenStats.cachedInputTokens)} | output ${formatCount(summary.prdTokenStats.outputTokens)} | reasoning ${formatCount(summary.prdTokenStats.reasoningOutputTokens)} | raw input ${formatCount(summary.prdTokenStats.inputTokens)}`);
     }
-    console.log(`Total Tokens: ${formatCount(summary.totals.totalTokens)}`);
+    console.log(`End-to-end Price-ish Tokens: ${formatCount(summary.totals.priceishTokens)}`);
   }
   if (summary.metrics.sampledIterations > 0) {
     console.log(`Measured Prompt Bytes: ${formatCount(summary.metrics.promptBytes)}`);
@@ -302,12 +309,13 @@ export function printSummary(summary) {
   console.log("");
   console.log("Per iteration:");
   for (const item of summary.iterations) {
-    const tokenText = item.tokens == null ? "unknown" : formatCount(item.tokens);
-    const tokenStats = item.metrics?.tokenStats || null;
+    const tokenStats = item.metrics?.tokenStats || extractTokenStats(item.logFile) || null;
+    const priceishTokens = tokenStats?.priceishTokens || tokenStats?.totalTokens || item.tokens;
+    const tokenText = priceishTokens == null ? "unknown" : formatCount(priceishTokens);
     const detail = tokenStats?.inputTokens
-      ? ` | input ${formatCount(tokenStats.inputTokens)} | cached ${formatCount(tokenStats.cachedInputTokens)} | output ${formatCount(tokenStats.outputTokens)}`
+      ? ` | uncached input ${formatCount(tokenStats.uncachedInputTokens)} | cached input ${formatCount(tokenStats.cachedInputTokens)} | output ${formatCount(tokenStats.outputTokens)} | reasoning ${formatCount(tokenStats.reasoningOutputTokens)}`
       : "";
-    console.log(`- ${item.iteration}. ${item.storyId} | ${formatDuration(item.durationSeconds)} | ${tokenText} tokens | ${item.status}${detail}`);
+    console.log(`- ${item.iteration}. ${item.storyId} | ${formatDuration(item.durationSeconds)} | ${tokenText} price-ish tokens | ${item.status}${detail}`);
   }
 }
 

@@ -123,6 +123,12 @@ Benchmark meanings:
 - `prdtest04`: intentionally cheap Node CLI benchmark for token and overhead checks
 - `prdtest05`: lightweight Node API benchmark for startup, run-instruction, and process-lifecycle checks
 
+Benchmark history in this repo uses **price-ish tokens** as the primary metric:
+
+- `price-ish = uncached input + output + reasoning`
+- cached input is stored separately as prompt reuse detail
+- raw input is stored separately as prompt footprint detail
+
 For local app verification during Ralph build runs, the bundled Ralph browser helper is now preferred over the persistent `dev-browser` relay server. The main path is a single `serve-and-run` helper call that starts the dev server, runs the headless Playwright check, and then tears the server down. The relay skill remains useful for remote or session-dependent websites.
 
 ## How Ralph Works
