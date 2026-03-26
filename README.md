@@ -21,6 +21,7 @@ Compared with the upstream Ralph flow, this fork adds or changes:
 - Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
 - slimmer build prompts with a compact progress snapshot instead of feeding large context every run
 - compact bundled PRD generation so build runs carry less narrative overhead
+- compact progress snapshots and per-run metrics so prompt growth and hot spots are visible
 - automatic stale story recovery defaults
 - automatic tiny-task prompting for very small PRDs
 - an explicit `--tiny` flag for build runs
@@ -328,6 +329,8 @@ ralph build 1 --agent=codex
 
 The Codex defaults in this fork use `codex exec`.
 
+By default, Ralph now sets Codex `model_reasoning_effort` to `medium` for its bundled Codex commands. That keeps the default build loop from inheriting a globally configured `high` effort setting unless you explicitly override the agent command.
+
 ## Windows Notes
 
 Important Windows-specific behavior in this fork:
@@ -390,4 +393,10 @@ Real-agent loop test:
 
 ```bash
 npm run test:real
+```
+
+Analyze a Ralph run from a real project:
+
+```bash
+npm run benchmark:run -- C:\path\to\project
 ```

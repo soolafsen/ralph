@@ -1,81 +1,73 @@
 # Build
 
-Complete exactly one story from the PRD, verify it, and record the outcome.
+Complete exactly one PRD story, verify it, log the result, then stop.
 
 ## Paths
 - Repo Root: {{REPO_ROOT}}
 - PRD: {{PRD_PATH}}
 - AGENTS (optional): {{AGENTS_PATH}}
 - Progress Snapshot: {{PROGRESS_CONTEXT_PATH}}
-- Progress Log (append only): {{PROGRESS_PATH}}
+- Progress Log: {{PROGRESS_PATH}}
 - Errors Log: {{ERRORS_LOG_PATH}}
-- No-commit: {{NO_COMMIT}}
 - Run ID: {{RUN_ID}}
 - Iteration: {{ITERATION}}
 - Run Log: {{RUN_LOG_PATH}}
 - Run Summary: {{RUN_META_PATH}}
-- Run Temp Dir: {{TMP_DIR}}
+- Temp Dir: {{TMP_DIR}}
+- No-commit: {{NO_COMMIT}}
 - Tiny Task Mode: {{TINY_TASK_MODE}}
-- Browser Verification Visibility: {{BROWSER_VISIBILITY}}
-- Ralph Process Helper: {{PROCESS_HELPER_PATH}}
-- Ralph Browser Check Helper: {{BROWSER_CHECK_HELPER_PATH}}
+- Browser Visibility: {{BROWSER_VISIBILITY}}
+- Process Helper: {{PROCESS_HELPER_PATH}}
+- Browser Check Helper: {{BROWSER_CHECK_HELPER_PATH}}
 
-## Selected Story
+## Story
 - ID: {{STORY_ID}}
 - Title: {{STORY_TITLE}}
 
 {{STORY_BLOCK}}
 
-If the story block is empty, stop and report that the PRD story could not be parsed.
+If the story block is empty, stop and report that the story could not be parsed.
 
-## Global Quality Gates
+## Quality Gates
 {{QUALITY_GATES}}
 
 ## Rules
 - Work only on {{STORY_ID}}.
 - Do not ask the user questions.
 - Do not edit the PRD JSON directly.
-- Read code before changing it.
+- Read only the files needed for this story.
 - Keep changes minimal and relevant.
 - If {{NO_COMMIT}} is true, do not commit or push.
-- If you discover reusable run/build/test instructions, update {{AGENTS_PATH}} briefly.
-- If the repo is runnable or becomes runnable during this story, create or update a short `README.md` with the simplest relevant install/start/build/test commands and what to open or run next, even if the story does not explicitly ask for documentation.
-- Keep startup instructions shell-neutral where possible. Prefer plain command lines such as `npm run dev` instead of shell-specific wrappers.
-- Infer startup instructions from the repo itself. Use signals such as `package.json` scripts, `pyproject.toml`, `requirements.txt`, `Cargo.toml`, `go.mod`, `Makefile`, or other obvious project entrypoints. Do not wait for the plan or user request to mention docs.
-- For frontend or UI verification, prefer headless browser checks when Browser Verification Visibility is `headless`. Open a visible browser window only when Browser Verification Visibility is `show`.
-- Browser Verification Visibility changes visibility only. It does not remove the requirement to verify frontend or UI changes in a browser.
-- For Codex on Windows, do not use `cmd /c start`, `start /min`, `Start-Process`, or ad hoc shell-specific background tricks for local frontend verification.
-- Prefer a single one-shot `serve-and-run` call through the Ralph browser check helper. It starts the local server hidden, waits for readiness, runs the browser script, and shuts the server down before exiting.
-- Example headless local app check:
+- Update {{AGENTS_PATH}} or `README.md` only when run/build/test instructions are missing or changed.
+- Keep run instructions shell-neutral when possible.
+- Prefer the cheapest verification that actually proves the story.
+- During development, prefer targeted tests or focused checks over broad full-suite reruns.
+- Before finishing, run the smallest final verification set that covers the changed behavior and any applicable quality gates.
+- For frontend or UI changes, verify in a browser. Prefer headless checks unless Browser Visibility is `show`.
+- On Codex + Windows, do not use `cmd /c start`, `start /min`, `Start-Process`, or ad hoc detached shell tricks for local app verification.
+- Prefer one-shot browser verification through:
   `node "{{BROWSER_CHECK_HELPER_PATH}}" serve-and-run --cwd "{{REPO_ROOT}}" --url http://127.0.0.1:4173/ --ready-url http://127.0.0.1:4173/ --script "{{TMP_DIR}}/verify-{{STORY_ID}}.mjs" -- npm run dev -- --host 127.0.0.1 --port 4173 --strictPort`
-- Only fall back to the Ralph process helper for longer-lived manual debugging flows that genuinely need a server to outlive the verification command.
-- Only use the `dev-browser` skill's persistent relay or extension modes for remote, unknown, or session-dependent websites. Do not use them for local app smoke tests.
-- If the repo has a runnable workflow, end your final response with a compact machine-readable `run_instructions` block containing one command or next step per line.
-- Keep that block concise and shell-neutral. Include exact files or URLs to open where relevant. Omit the block only if there is genuinely no runnable workflow to describe yet.
+- Use the persistent `dev-browser` relay only for remote or session-dependent websites, not local smoke tests.
+- If the repo has a runnable workflow, end your final response with a compact `<run_instructions>` block: one command or next step per line.
+- Only output `<promise>COMPLETE</promise>` after the story is implemented, verified, and logged.
 
 ## Execution
-1. Read the selected story, the global quality gates, and the progress snapshot.
-2. Read only the repo files needed for this story. Read {{AGENTS_PATH}} if it exists and is relevant.
-3. Implement the story fully. No placeholders unless the story explicitly requires scaffolding.
-4. If the repo has a runnable workflow and lacks a clear quick-start, add or refresh a compact `README.md` before finishing.
-5. Run the story-specific verification plus the global quality gates that apply.
-6. For frontend or UI changes, verify in a browser before marking complete. Prefer headless verification unless Browser Verification Visibility is `show`.
-7. Append a concise progress entry to {{PROGRESS_PATH}} with what changed, verification results, and any useful follow-up notes.
-8. If repeated failures or traps were discovered, log them to {{ERRORS_LOG_PATH}}.
-9. Only then output `<promise>COMPLETE</promise>`.
+1. Read the story, quality gates, progress snapshot, and any repo files needed for this story.
+2. Implement the story fully. No placeholders unless the story explicitly calls for scaffolding.
+3. If the repo lacks clear quick-start commands, add or refresh a short `README.md` before finishing.
+4. Run the final verification set.
+5. Append a concise progress entry to {{PROGRESS_PATH}} with what changed, what passed, and any useful follow-up notes.
+6. Log repeated traps or failures to {{ERRORS_LOG_PATH}}.
+7. Output `<promise>COMPLETE</promise>`.
 
 ## Progress Entry
-Append a short entry in this format:
-
 ```text
 ## [Date/Time] - {{STORY_ID}}: {{STORY_TITLE}}
 Run: {{RUN_ID}} (iteration {{ITERATION}})
 No-commit: {{NO_COMMIT}}
 Verification:
 - <command> -> PASS/FAIL
-- <command> -> PASS/FAIL
 Files changed:
-- <file>
 - <file>
 Outcome:
 - <what was implemented>
@@ -85,4 +77,4 @@ Notes:
 ```
 
 ## Tiny Task Mode
-If `{{TINY_TASK_MODE}}` is `true`, prefer the shortest solution that satisfies the story and avoid extra scaffolding, audits, or documentation beyond what the story requires.
+If `{{TINY_TASK_MODE}}` is `true`, use the shortest solution that satisfies the story and avoid extra scaffolding, broad audits, or documentation churn.

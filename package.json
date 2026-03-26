@@ -7,6 +7,7 @@
   },
   "scripts": {
     "test": "node tests/cli-smoke.mjs && node tests/process-helper.mjs && node tests/agent-loops.mjs",
+    "benchmark:run": "node scripts/analyze-ralph-run.mjs",
     "test:real": "node tests/real-agents.mjs",
     "test:ping": "node tests/agent-ping.mjs"
   },

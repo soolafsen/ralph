@@ -306,6 +306,9 @@ async function resolvePrdPath({ cwd, explicitPath, label }) {
   if (candidates.length === 1) {
     return candidates[0];
   }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return candidates[0];
+  }
   const { intro, select, outro, isCancel } = await import("@clack/prompts");
   intro(label || "Select PRD");
   const selection = await select({
@@ -336,6 +339,9 @@ async function resolvePlanPath({ cwd, explicitPath }) {
   if (candidates.length === 0) {
     printPlanSearchDiagnostics(cwd, candidates);
     return null;
+  }
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return candidates[0];
   }
   if (candidates.length === 1) {
     const candidate = candidates[0];
@@ -702,13 +708,13 @@ async function main() {
   const loopArgs = args.length ? args : ["build"];
   const loadAgentMap = () => {
     const defaults = {
-      codex: "codex exec --yolo --skip-git-repo-check -",
+      codex: "codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" -",
       claude: "claude -p --dangerously-skip-permissions \"$(cat {prompt})\"",
       droid: "droid exec --skip-permissions-unsafe -f {prompt}",
       opencode: "opencode run \"$(cat {prompt})\"",
     };
     const interactiveDefaults = {
-      codex: "codex exec --yolo --skip-git-repo-check {prompt}",
+      codex: "codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" {prompt}",
       claude: "claude --dangerously-skip-permissions {prompt}",
       droid: "droid --skip-permissions-unsafe {prompt}",
       opencode: "opencode --prompt {prompt}",

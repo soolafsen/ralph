@@ -59,6 +59,7 @@ const stagedBrowserCheckHelperPath = path.join(stagedHelperDir, "browser-check.c
 const quietMode = String(process.env.RALPH_QUIET || "0") === "1";
 const staleSeconds = Number(process.env.STALE_SECONDS || "300");
 const progressTailLines = Number(process.env.PROGRESS_TAIL_LINES || "20");
+const progressContextEntryCount = Math.max(1, Number(process.env.PROGRESS_CONTEXT_ENTRY_COUNT || "1"));
 const tinyTaskStoryMax = Number(process.env.TINY_TASK_STORY_MAX || "3");
 const tinyTaskModeOverride = process.env.TINY_TASK_MODE_OVERRIDE || "";
 const browserVisibility = process.env.RALPH_BROWSER_VISIBILITY || "headless";
@@ -142,6 +143,16 @@ function ensureFile(filePath, content) {
 
 function escapeJsString(value) {
   return JSON.stringify(String(value));
+}
+
+function measureText(text) {
+  const value = String(text || "");
+  const trimmed = value.trim();
+  return {
+    bytes: Buffer.byteLength(value, "utf-8"),
+    lines: value ? value.split(/\r?\n/).length : 0,
+    words: trimmed ? trimmed.split(/\s+/).length : 0,
+  };
 }
 
 function stageHelperWrappers() {
@@ -252,14 +263,62 @@ function parseConfigShell(filePath) {
   return result;
 }
 
+function extractProgressSection(entryText, heading) {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = entryText.match(new RegExp(`^${escaped}:\\r?\\n([\\s\\S]*?)(?=^\\S[^\\r\\n]*:\\r?$|^---$|\\Z)`, "m"));
+  if (!match) return [];
+  return String(match[1] || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "));
+}
+
+function summarizeVerification(entryText) {
+  const lines = extractProgressSection(entryText, "Verification");
+  if (!lines.length) return "";
+  const passCount = lines.filter((line) => /->\s*PASS\b/i.test(line)).length;
+  const failCount = lines.filter((line) => /->\s*FAIL\b/i.test(line)).length;
+  const otherCount = Math.max(0, lines.length - passCount - failCount);
+  const parts = [];
+  if (passCount) parts.push(`${passCount} pass`);
+  if (failCount) parts.push(`${failCount} fail`);
+  if (otherCount) parts.push(`${otherCount} other`);
+  return parts.join(", ");
+}
+
+function summarizeProgressEntry(entryLines) {
+  const entryText = entryLines.join("\n").trim();
+  if (!entryText) return "";
+  const header = entryLines[0] || "## Progress";
+  const outcome = extractProgressSection(entryText, "Outcome");
+  const notes = extractProgressSection(entryText, "Notes");
+  const verification = summarizeVerification(entryText);
+  const lines = [header];
+  if (verification) {
+    lines.push(`Verification: ${verification}`);
+  }
+  if (outcome.length) {
+    lines.push("Outcome:");
+    lines.push(...outcome);
+  }
+  if (notes.length) {
+    lines.push("Notes:");
+    lines.push(...notes.slice(0, 3));
+  }
+  return lines.join("\n");
+}
+
 function buildProgressContext(dstPath, tinyMode) {
+  let output = "# Progress Snapshot\n\n";
   if (tinyMode === "true") {
-    fs.writeFileSync(dstPath, "# Progress Snapshot\n\n(skip for tiny task)\n");
-    return;
+    output += "(skip for tiny task)\n";
+    fs.writeFileSync(dstPath, output);
+    return measureText(output);
   }
   if (!exists(progressPath)) {
-    fs.writeFileSync(dstPath, "# Progress Snapshot\n\n(none)\n");
-    return;
+    output += "(none)\n";
+    fs.writeFileSync(dstPath, output);
+    return measureText(output);
   }
   const lines = fs.readFileSync(progressPath, "utf-8").split(/\r?\n/);
   const entries = [];
@@ -275,12 +334,18 @@ function buildProgressContext(dstPath, tinyMode) {
   if (current.length) entries.push(current);
   let text = "";
   if (entries.length) {
-    text = entries.slice(-2).map((entry) => entry.join("\n").trim()).filter(Boolean).join("\n\n");
-  } else {
-    text = lines.slice(-progressTailLines).join("\n").trim();
+    text = entries
+      .slice(-progressContextEntryCount)
+      .map((entry) => summarizeProgressEntry(entry))
+      .filter(Boolean)
+      .join("\n\n");
   }
-  if (!text) text = "(none)";
-  fs.writeFileSync(dstPath, `# Progress Snapshot\n\n${text}\n`);
+  if (!text) {
+    text = lines.slice(-progressTailLines).join("\n").trim() || "(none)";
+  }
+  output += `${text}\n`;
+  fs.writeFileSync(dstPath, output);
+  return measureText(output);
 }
 
 function selectStory(metaOut, blockOut) {
@@ -439,6 +504,7 @@ function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressC
     src = src.replaceAll(`{{${key}}}`, value);
   }
   fs.writeFileSync(dstPath, src);
+  return measureText(src);
 }
 
 function logActivity(message) {
@@ -525,7 +591,40 @@ function writeRunMeta(metaPath, payload) {
     payload.dirtyFiles || "- (clean)",
     "",
   );
+  if (payload.promptMetrics || payload.phaseMetrics || payload.logMetrics) {
+    lines.push("## Metrics", "");
+    if (payload.promptMetrics) {
+      lines.push(
+        `- Prompt: ${formatCount(payload.promptMetrics.bytes)} bytes, ${formatCount(payload.promptMetrics.words)} words, ${formatCount(payload.promptMetrics.lines)} lines`,
+        `- Story Block: ${formatCount(payload.promptMetrics.storyBlockBytes)} bytes, ${formatCount(payload.promptMetrics.storyBlockWords)} words`,
+        `- Progress Snapshot: ${formatCount(payload.promptMetrics.progressBytes)} bytes, ${formatCount(payload.promptMetrics.progressWords)} words`,
+        "",
+      );
+    }
+    if (payload.phaseMetrics) {
+      lines.push(
+        "### Timing",
+        `- Story Selection: ${payload.phaseMetrics.storySelectionMs}ms`,
+        `- Progress Snapshot: ${payload.phaseMetrics.progressSnapshotMs}ms`,
+        `- Prompt Render: ${payload.phaseMetrics.promptRenderMs}ms`,
+        `- Agent Run: ${payload.phaseMetrics.agentRunMs}ms`,
+        `- Postprocess: ${payload.phaseMetrics.postprocessMs}ms`,
+        "",
+      );
+    }
+    if (payload.logMetrics) {
+      lines.push(
+        "### Output",
+        `- Log Size: ${formatCount(payload.logMetrics.logBytes)} bytes`,
+        "",
+      );
+    }
+  }
   fs.writeFileSync(metaPath, `${lines.join("\n")}\n`);
+}
+
+function writeRunMetrics(metricsPath, payload) {
+  fs.writeFileSync(metricsPath, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function extractRunInstructions(logFile) {
@@ -916,7 +1015,10 @@ async function runBuild() {
 
     const storyMeta = path.join(tmpDir, `story-${runTag}-${iteration}.json`);
     const storyBlock = path.join(tmpDir, `story-${runTag}-${iteration}.md`);
+    const metricsFile = path.join(runsDir, `run-${runTag}-iter-${iteration}.metrics.json`);
+    const selectStart = Date.now();
     selectStory(storyMeta, storyBlock);
+    const storySelectionMs = Date.now() - selectStart;
     const meta = readJson(storyMeta);
     const remaining = String(meta.remaining ?? "unknown");
     if (remaining === "unknown") {
@@ -942,14 +1044,20 @@ async function runBuild() {
     const logFile = path.join(runsDir, `run-${runTag}-iter-${iteration}.log`);
     const runMeta = path.join(runsDir, `run-${runTag}-iter-${iteration}.md`);
     const tinyTaskMode = tinyTaskModeOverride || tinyTaskModeFromMeta(storyMeta);
-    buildProgressContext(progressContext, tinyTaskMode);
-    renderPrompt(promptFile, promptRendered, storyMeta, storyBlock, progressContext, tinyTaskMode, iteration, logFile, runMeta);
+    const progressStart = Date.now();
+    const progressMetrics = buildProgressContext(progressContext, tinyTaskMode);
+    const progressSnapshotMs = Date.now() - progressStart;
+    const promptStart = Date.now();
+    const promptMetrics = renderPrompt(promptFile, promptRendered, storyMeta, storyBlock, progressContext, tinyTaskMode, iteration, logFile, runMeta);
+    const promptRenderMs = Date.now() - promptStart;
+    const storyBlockMetrics = measureText(exists(storyBlock) ? fs.readFileSync(storyBlock, "utf-8") : "");
 
     logActivity(`ITERATION ${iteration} start (mode=${mode} story=${storyId})`);
     interruptRequested = false;
     forceKillRequested = false;
 
     let result;
+    const agentStart = Date.now();
     if (process.env.RALPH_DRY_RUN === "1") {
       fs.writeFileSync(logFile, "[RALPH_DRY_RUN] Skipping agent execution.\n");
       if (quietMode) quietEcho("Build: dry-run");
@@ -957,7 +1065,9 @@ async function runBuild() {
     } else {
       result = await runAgentCommand(agentCommand, promptRendered, logFile, "Build: working");
     }
+    const agentRunMs = Date.now() - agentStart;
 
+    const postprocessStart = Date.now();
     const iterEnd = Date.now();
     const iterEndFmt = formatLogDate(new Date(iterEnd));
     const iterDuration = Math.floor((iterEnd - iterStart) / 1000);
@@ -977,10 +1087,13 @@ async function runBuild() {
     if (tokensUsed != null) {
       cumulativeTokens += tokensUsed;
     }
+    const logBytes = exists(logFile) ? fs.statSync(logFile).size : 0;
     const statusLabel = interrupted ? "interrupted" : result.status !== 0 ? "error" : "success";
     if (!noCommit && dirtyFiles && !interrupted) {
       logError(`ITERATION ${iteration} left uncommitted changes; review run summary at ${runMeta}`);
     }
+
+    const postprocessMs = Date.now() - postprocessStart;
 
     writeRunMeta(runMeta, {
       runId: runTag,
@@ -999,6 +1112,53 @@ async function runBuild() {
       commitList,
       changedFiles,
       dirtyFiles,
+      promptMetrics: {
+        bytes: promptMetrics.bytes,
+        words: promptMetrics.words,
+        lines: promptMetrics.lines,
+        storyBlockBytes: storyBlockMetrics.bytes,
+        storyBlockWords: storyBlockMetrics.words,
+        progressBytes: progressMetrics.bytes,
+        progressWords: progressMetrics.words,
+      },
+      phaseMetrics: {
+        storySelectionMs,
+        progressSnapshotMs,
+        promptRenderMs,
+        agentRunMs,
+        postprocessMs,
+      },
+      logMetrics: {
+        logBytes,
+      },
+    });
+
+    writeRunMetrics(metricsFile, {
+      runId: runTag,
+      iteration,
+      mode,
+      storyId,
+      storyTitle,
+      tokensUsed,
+      status: statusLabel,
+      prompt: {
+        bytes: promptMetrics.bytes,
+        words: promptMetrics.words,
+        lines: promptMetrics.lines,
+      },
+      storyBlock: storyBlockMetrics,
+      progressSnapshot: progressMetrics,
+      output: {
+        logBytes,
+      },
+      timing: {
+        storySelectionMs,
+        progressSnapshotMs,
+        promptRenderMs,
+        agentRunMs,
+        postprocessMs,
+        totalMs: iterEnd - iterStart,
+      },
     });
 
     appendRunSummary(`${formatLogDate(new Date())} | run=${runTag} | iter=${iteration} | mode=${mode} | story=${storyId} | duration=${iterDuration}s | tokens=${tokensUsed == null ? "unknown" : tokensUsed} | status=${statusLabel}`);
