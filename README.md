@@ -206,6 +206,12 @@ Force tiny-task mode:
 ralph build 1 --tiny
 ```
 
+Run a minimal barebones loop:
+
+```bash
+ralph build --barebones
+```
+
 Choose a PRD explicitly:
 
 ```bash
@@ -272,6 +278,31 @@ What `--tiny` does not do:
 - it does not bypass PRD story selection
 - it does not change git or `--no-commit` behavior
 - it does not reduce story count inside the PRD automatically
+
+## Barebones Mode
+
+Barebones mode is for the simplest possible Ralph loop when you want a minimal implementation pass and the lightest acceptable verification.
+
+You can enable it with:
+
+```bash
+ralph build --barebones
+ralph build 3 --barebones
+```
+
+Practical effects of `--barebones`:
+
+- defaults build runs to one iteration unless you pass an explicit iteration count
+- biases the agent toward the smallest viable story implementation
+- avoids tests, browser checks, package installs, and README churn unless the story or quality gates actually require them
+- keeps the loop file-based and story-based like normal Ralph
+
+What `--barebones` does not do:
+
+- it does not bypass PRD story selection
+- it does not ignore explicit quality gates
+- it does not change `--no-commit` behavior
+- it does not prevent you from running multiple iterations when you ask for them
 
 ## Quiet Mode
 

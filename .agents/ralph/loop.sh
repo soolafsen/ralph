@@ -93,6 +93,7 @@ PROGRESS_TAIL_LINES="${PROGRESS_TAIL_LINES:-$DEFAULT_PROGRESS_TAIL_LINES}"
 TINY_TASK_STORY_MAX="${TINY_TASK_STORY_MAX:-$DEFAULT_TINY_TASK_STORY_MAX}"
 COMPLETE_MARKER_TAIL_BYTES="${RALPH_COMPLETE_MARKER_TAIL_BYTES:-$DEFAULT_COMPLETE_MARKER_TAIL_BYTES}"
 TINY_TASK_MODE_OVERRIDE="${TINY_TASK_MODE_OVERRIDE:-}"
+BAREBONES_MODE_OVERRIDE="${BAREBONES_MODE_OVERRIDE:-}"
 BROWSER_VISIBILITY="${RALPH_BROWSER_VISIBILITY:-headless}"
 RUN_TAG="$(date +%Y%m%d-%H%M%S)-$$"
 
@@ -634,11 +635,12 @@ render_prompt() {
   local story_block="$4"
   local progress_context="$5"
   local tiny_task_mode="$6"
-  local run_id="$7"
-  local iter="$8"
-  local run_log="$9"
-  local run_meta="${10}"
-  python3 - "$src" "$dst" "$PRD_PATH" "$AGENTS_PATH" "$PROGRESS_PATH" "$progress_context" "$ROOT_DIR" "$ERRORS_LOG_PATH" "$NO_COMMIT" "$tiny_task_mode" "$story_meta" "$story_block" "$run_id" "$iter" "$run_log" "$run_meta" "$BROWSER_VISIBILITY" "$TMP_DIR" "$STAGED_PROCESS_HELPER_PATH" "$STAGED_BROWSER_CHECK_HELPER_PATH" <<'PY'
+  local barebones_mode="$7"
+  local run_id="$8"
+  local iter="$9"
+  local run_log="${10}"
+  local run_meta="${11}"
+  python3 - "$src" "$dst" "$PRD_PATH" "$AGENTS_PATH" "$PROGRESS_PATH" "$progress_context" "$ROOT_DIR" "$ERRORS_LOG_PATH" "$NO_COMMIT" "$tiny_task_mode" "$barebones_mode" "$story_meta" "$story_block" "$run_id" "$iter" "$run_log" "$run_meta" "$BROWSER_VISIBILITY" "$TMP_DIR" "$STAGED_PROCESS_HELPER_PATH" "$STAGED_BROWSER_CHECK_HELPER_PATH" <<'PY'
 import sys
 from pathlib import Path
 
@@ -647,16 +649,17 @@ prd, agents, progress, progress_context, root = sys.argv[3:8]
 errors_log = sys.argv[8]
 no_commit = sys.argv[9]
 tiny_task_mode = sys.argv[10]
-meta_path = sys.argv[11] if len(sys.argv) > 11 else ""
-block_path = sys.argv[12] if len(sys.argv) > 12 else ""
-run_id = sys.argv[13] if len(sys.argv) > 13 else ""
-iteration = sys.argv[14] if len(sys.argv) > 14 else ""
-run_log = sys.argv[15] if len(sys.argv) > 15 else ""
-run_meta = sys.argv[16] if len(sys.argv) > 16 else ""
-browser_visibility = sys.argv[17] if len(sys.argv) > 17 else "headless"
-tmp_dir = sys.argv[18] if len(sys.argv) > 18 else ""
-process_helper = sys.argv[19] if len(sys.argv) > 19 else ""
-browser_check_helper = sys.argv[20] if len(sys.argv) > 20 else ""
+barebones_mode = sys.argv[11] if len(sys.argv) > 11 else "false"
+meta_path = sys.argv[12] if len(sys.argv) > 12 else ""
+block_path = sys.argv[13] if len(sys.argv) > 13 else ""
+run_id = sys.argv[14] if len(sys.argv) > 14 else ""
+iteration = sys.argv[15] if len(sys.argv) > 15 else ""
+run_log = sys.argv[16] if len(sys.argv) > 16 else ""
+run_meta = sys.argv[17] if len(sys.argv) > 17 else ""
+browser_visibility = sys.argv[18] if len(sys.argv) > 18 else "headless"
+tmp_dir = sys.argv[19] if len(sys.argv) > 19 else ""
+process_helper = sys.argv[20] if len(sys.argv) > 20 else ""
+browser_check_helper = sys.argv[21] if len(sys.argv) > 21 else ""
 repl = {
     "PRD_PATH": prd,
     "AGENTS_PATH": agents,
@@ -666,6 +669,7 @@ repl = {
     "ERRORS_LOG_PATH": errors_log,
     "NO_COMMIT": no_commit,
     "TINY_TASK_MODE": tiny_task_mode,
+    "BAREBONES_MODE": barebones_mode,
     "RUN_ID": run_id,
     "ITERATION": iteration,
     "RUN_LOG_PATH": run_log,
@@ -1242,8 +1246,12 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   elif [ "$MODE" = "build" ]; then
     TINY_TASK_MODE="$(tiny_task_mode_from_meta "$STORY_META")"
   fi
+  BAREBONES_MODE="false"
+  if [ "$MODE" = "build" ] && [ -n "$BAREBONES_MODE_OVERRIDE" ]; then
+    BAREBONES_MODE="true"
+  fi
   build_progress_context "$PROGRESS_CONTEXT" "$TINY_TASK_MODE"
-  render_prompt "$PROMPT_FILE" "$PROMPT_RENDERED" "$STORY_META" "$STORY_BLOCK" "$PROGRESS_CONTEXT" "$TINY_TASK_MODE" "$RUN_TAG" "$i" "$LOG_FILE" "$RUN_META"
+  render_prompt "$PROMPT_FILE" "$PROMPT_RENDERED" "$STORY_META" "$STORY_BLOCK" "$PROGRESS_CONTEXT" "$TINY_TASK_MODE" "$BAREBONES_MODE" "$RUN_TAG" "$i" "$LOG_FILE" "$RUN_META"
 
   if [ "$MODE" = "build" ] && [ -n "${STORY_ID:-}" ]; then
     log_activity "ITERATION $i start (mode=$MODE story=$STORY_ID)"

@@ -16,6 +16,7 @@ Complete exactly one PRD story, verify it, log the result, then stop.
 - Temp Dir: {{TMP_DIR}}
 - No-commit: {{NO_COMMIT}}
 - Tiny Task Mode: {{TINY_TASK_MODE}}
+- Barebones Mode: {{BAREBONES_MODE}}
 - Browser Visibility: {{BROWSER_VISIBILITY}}
 - Process Helper: {{PROCESS_HELPER_PATH}}
 - Browser Check Helper: {{BROWSER_CHECK_HELPER_PATH}}
@@ -43,7 +44,10 @@ If the story block is empty, stop and report that the story could not be parsed.
 - Prefer the cheapest verification that actually proves the story.
 - During development, prefer targeted tests or focused checks over broad full-suite reruns.
 - Before finishing, run the smallest final verification set that covers the changed behavior and any applicable quality gates.
-- For frontend or UI changes, verify in a browser. Prefer headless checks unless Browser Visibility is `show`.
+- If Barebones Mode is `true`, do not run tests, browser checks, package installs, builds, or README churn unless the story or quality gates actually require them.
+- In Barebones Mode, prefer one focused smoke check or direct execution over full validation.
+- For frontend or UI changes, verify in a browser unless Barebones Mode is `true` and a lighter local check is enough to prove the story.
+- Prefer headless browser checks unless Browser Visibility is `show`.
 - On Codex + Windows, do not use `cmd /c start`, `start /min`, `Start-Process`, or ad hoc detached shell tricks for local app verification.
 - Prefer one-shot browser verification through:
   `node "{{BROWSER_CHECK_HELPER_PATH}}" serve-and-run --cwd "{{REPO_ROOT}}" --url http://127.0.0.1:4173/ --ready-url http://127.0.0.1:4173/ --script "{{TMP_DIR}}/verify-{{STORY_ID}}.mjs" -- npm run dev -- --host 127.0.0.1 --port 4173 --strictPort`
@@ -78,3 +82,11 @@ Notes:
 
 ## Tiny Task Mode
 If `{{TINY_TASK_MODE}}` is `true`, use the shortest solution that satisfies the story and avoid extra scaffolding, broad audits, or documentation churn.
+
+## Barebones Mode
+If `{{BAREBONES_MODE}}` is `true`, keep the loop as simple as possible for this story:
+
+- Prefer the smallest viable implementation that satisfies the acceptance criteria.
+- Avoid extra polish, refactors, framework churn, or opportunistic improvements.
+- Only run tests or browser verification when the story or quality gates make them necessary.
+- If no explicit verification is required, a minimal direct sanity check is enough.

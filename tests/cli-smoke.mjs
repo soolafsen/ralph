@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, existsSync, readdirSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,3 +45,37 @@ try {
 }
 
 console.log("CLI smoke test passed.");
+
+const buildRoot = mkdtempSync(path.join(tmpdir(), "ralph-barebones-"));
+try {
+  mkdirSync(path.join(buildRoot, ".agents", "tasks"), { recursive: true });
+  const prdPath = path.join(buildRoot, ".agents", "tasks", "prd.json");
+  const prd = {
+    version: 1,
+    project: "Barebones Smoke Test",
+    qualityGates: [],
+    stories: [
+      { id: "US-001", title: "First story", status: "open", dependsOn: [], acceptanceCriteria: ["Create one file"] },
+      { id: "US-002", title: "Second story", status: "open", dependsOn: [], acceptanceCriteria: ["Create another file"] },
+    ],
+  };
+  writeFileSync(prdPath, `${JSON.stringify(prd, null, 2)}\n`);
+
+  run(process.execPath, [cliPath, "build", "--barebones", "--no-commit"], {
+    cwd: buildRoot,
+    env: { ...process.env, RALPH_DRY_RUN: "1" },
+  });
+
+  const runsDir = path.join(buildRoot, ".ralph", "runs");
+  const summaries = existsSync(runsDir)
+    ? readdirSync(runsDir).filter((name) => name.endsWith(".md") && name.startsWith("run-"))
+    : [];
+  if (summaries.length !== 1) {
+    console.error(`Barebones smoke test failed: expected 1 iteration summary, found ${summaries.length}.`);
+    process.exit(1);
+  }
+} finally {
+  rmSync(buildRoot, { recursive: true, force: true });
+}
+
+console.log("Barebones CLI smoke test passed.");

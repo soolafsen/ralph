@@ -20,6 +20,7 @@ let prdPath = null;
 let progressPath = null;
 let prdOutPath = null;
 let tinyMode = false;
+let barebonesMode = false;
 let planPath = null;
 let quietMode = false;
 let showBrowser = false;
@@ -87,7 +88,7 @@ Commands:
   ping                                Minimal agent health check
   doctor                              Check Ralph runner prerequisites
   log "<message>"                     Append to .ralph/activity.log
-  build [n] [--no-commit] [--tiny] [--quiet] [--show-browser]  Run build loop (default)
+  build [n] [--no-commit] [--tiny] [--barebones] [--quiet] [--show-browser]  Run build loop (default)
   overview                            Render a human overview from PRD JSON
   help                                Show this message
 
@@ -97,6 +98,7 @@ Options:
   --out <path>                        Override PRD output path (prd command)
   --progress <path>                   Override progress log path
   --tiny                              Force tiny-task prompt mode for build runs
+  --barebones                         Minimal single-story-biased build mode with the lightest acceptable verification
   --quiet                             Terse terminal output; full logs stay on disk
   --show-browser                      For browser verification, allow a visible browser window instead of preferring headless checks
   --force-skills                      Reinstall bundled skills even if they exist
@@ -106,6 +108,7 @@ Notes:
 - Uses local .agents/ralph if present; otherwise uses bundled defaults.
 - State and logs are written to .ralph/ in the project.
 - Browser verification still happens by default for frontend work. --show-browser only changes browser visibility for those checks.
+- --barebones defaults build runs to one iteration unless you pass an explicit iteration count.
 `);
 }
 
@@ -433,6 +436,10 @@ for (let i = 0; i < rawArgs.length; i += 1) {
     tinyMode = true;
     continue;
   }
+  if (arg === "--barebones") {
+    barebonesMode = true;
+    continue;
+  }
   if (arg === "--quiet") {
     quietMode = true;
     continue;
@@ -751,7 +758,12 @@ async function main() {
     process.exit(1);
   }
 
-  const loopArgs = args.length ? args : ["build"];
+  const loopArgs = args.length ? [...args] : ["build"];
+  const hasExplicitBuildIterations =
+    loopArgs[0] === "build" && loopArgs.slice(1).some((value) => /^\d+$/.test(value));
+  if (barebonesMode && loopArgs[0] === "build" && !hasExplicitBuildIterations) {
+    loopArgs.splice(1, 0, "1");
+  }
   const loadAgentMap = () => {
     const defaults = {
       codex: "codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" -",
@@ -839,6 +851,7 @@ async function main() {
   }
   if (progressPath) env.PROGRESS_PATH = progressPath;
   if (tinyMode) env.TINY_TASK_MODE_OVERRIDE = "true";
+  if (barebonesMode) env.BAREBONES_MODE_OVERRIDE = "true";
   if (quietMode) env.RALPH_QUIET = "1";
   if (showBrowser) env.RALPH_BROWSER_VISIBILITY = "show";
   if (templateDir === globalDir) {

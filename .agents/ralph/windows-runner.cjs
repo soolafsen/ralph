@@ -64,6 +64,7 @@ const progressTailLines = Number(process.env.PROGRESS_TAIL_LINES || "20");
 const progressContextEntryCount = Math.max(1, Number(process.env.PROGRESS_CONTEXT_ENTRY_COUNT || "1"));
 const tinyTaskStoryMax = Number(process.env.TINY_TASK_STORY_MAX || "3");
 const tinyTaskModeOverride = process.env.TINY_TASK_MODE_OVERRIDE || "";
+const barebonesModeOverride = process.env.BAREBONES_MODE_OVERRIDE || "";
 const browserVisibility = process.env.RALPH_BROWSER_VISIBILITY || "headless";
 const runTag = process.env.RUN_TAG || `${formatCompactDate(new Date())}-${process.pid}`;
 
@@ -142,10 +143,11 @@ function formatCount(value) {
 function formatTokenBreakdown(stats) {
   if (!stats) return "";
   const parts = [];
-  if (stats.inputTokens != null) parts.push(`input ${formatCount(stats.inputTokens)}`);
-  if (stats.cachedInputTokens != null) parts.push(`cached ${formatCount(stats.cachedInputTokens)}`);
+  if (stats.uncachedInputTokens != null) parts.push(`uncached input ${formatCount(stats.uncachedInputTokens)}`);
+  if (stats.cachedInputTokens != null) parts.push(`cached input ${formatCount(stats.cachedInputTokens)}`);
   if (stats.outputTokens != null) parts.push(`output ${formatCount(stats.outputTokens)}`);
   if (stats.reasoningOutputTokens != null) parts.push(`reasoning ${formatCount(stats.reasoningOutputTokens)}`);
+  if (stats.inputTokens != null) parts.push(`raw input ${formatCount(stats.inputTokens)}`);
   return parts.join(" | ");
 }
 
@@ -486,7 +488,7 @@ function updateStoryStatus(storyId, newStatus) {
   writeJson(prdPath, data);
 }
 
-function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressContextPath, tinyTaskMode, iteration, runLog, runMetaPath) {
+function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressContextPath, tinyTaskMode, barebonesMode, iteration, runLog, runMetaPath) {
   let src = fs.readFileSync(srcPath, "utf-8");
   let meta = {};
   try {
@@ -504,6 +506,7 @@ function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressC
     ERRORS_LOG_PATH: errorsLogPath,
     NO_COMMIT: String(noCommit),
     TINY_TASK_MODE: tinyTaskMode,
+    BAREBONES_MODE: barebonesMode,
     RUN_ID: runTag,
     ITERATION: String(iteration),
     RUN_LOG_PATH: runLog,
@@ -592,19 +595,19 @@ function writeRunMeta(metaPath, payload) {
     `- Started: ${payload.started}`,
     `- Ended: ${payload.ended}`,
     `- Duration: ${payload.duration}s`,
-    `- Tokens: ${payload.tokens == null ? "unknown" : formatCount(payload.tokens)}`,
+    `- Price-ish Tokens: ${payload.tokens == null ? "unknown" : formatCount(payload.tokens)}`,
     `- Status: ${payload.status}`,
     `- Backend: ${payload.backend || "cli"}`,
     `- Log: ${payload.logFile}`,
     "",
   );
   if (payload.tokenStats) {
-    lines.push("## Tokens", `- Total: ${formatCount(payload.tokenStats.totalTokens)}`);
-    if (payload.tokenStats.inputTokens != null) lines.push(`- Input: ${formatCount(payload.tokenStats.inputTokens)}`);
-    if (payload.tokenStats.cachedInputTokens != null) lines.push(`- Cached Input: ${formatCount(payload.tokenStats.cachedInputTokens)}`);
+    lines.push("## Tokens", `- Price-ish Total: ${formatCount(payload.tokenStats.priceishTokens || payload.tokenStats.totalTokens)}`);
     if (payload.tokenStats.uncachedInputTokens != null) lines.push(`- Uncached Input: ${formatCount(payload.tokenStats.uncachedInputTokens)}`);
     if (payload.tokenStats.outputTokens != null) lines.push(`- Output: ${formatCount(payload.tokenStats.outputTokens)}`);
     if (payload.tokenStats.reasoningOutputTokens != null) lines.push(`- Reasoning Output: ${formatCount(payload.tokenStats.reasoningOutputTokens)}`);
+    if (payload.tokenStats.cachedInputTokens != null) lines.push(`- Cached Input: ${formatCount(payload.tokenStats.cachedInputTokens)}`);
+    if (payload.tokenStats.inputTokens != null) lines.push(`- Raw Input: ${formatCount(payload.tokenStats.inputTokens)}`);
     lines.push("");
   }
   lines.push(
@@ -793,13 +796,15 @@ function extractTokenStatsFromSession(sessionFile) {
       const outputTokens = Number(usage.output_tokens || 0);
       const reasoningOutputTokens = Number(usage.reasoning_output_tokens || 0);
       const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+      const priceishTokens = uncachedInputTokens + outputTokens + reasoningOutputTokens;
       latest = {
         inputTokens,
         cachedInputTokens,
         uncachedInputTokens,
         outputTokens,
         reasoningOutputTokens,
-        totalTokens: uncachedInputTokens + outputTokens,
+        priceishTokens,
+        totalTokens: priceishTokens,
         rawTotalTokens: Number(usage.total_tokens || 0),
       };
     } catch {}
@@ -1202,7 +1207,8 @@ async function runPrd() {
   if (quietMode) {
     quietEcho(result.status === 0 ? `PRD: complete (full log: ${prdLogFile})` : `PRD: failed (full log: ${prdLogFile})`);
     if (prdTokenStats) {
-      quietEcho(`PRD: tokens ${formatCount(prdTokenStats.totalTokens)} (total ${formatCount(prdTokenStats.totalTokens)})`);
+      const prdPriceishTokens = prdTokenStats.priceishTokens || prdTokenStats.totalTokens;
+      quietEcho(`PRD: price-ish tokens ${formatCount(prdPriceishTokens)} (run total ${formatCount(prdPriceishTokens)})`);
       const breakdown = formatTokenBreakdown(prdTokenStats);
       if (breakdown) {
         quietEcho(`PRD: token detail ${breakdown}`);
@@ -1230,6 +1236,7 @@ async function runBuild() {
   }
   initializeFiles();
   let cumulativeTokenStats = {
+    priceishTokens: 0,
     totalTokens: 0,
     inputTokens: 0,
     cachedInputTokens: 0,
@@ -1287,11 +1294,12 @@ async function runBuild() {
     const logFile = path.join(runsDir, `run-${runTag}-iter-${iteration}.log`);
     const runMeta = path.join(runsDir, `run-${runTag}-iter-${iteration}.md`);
     const tinyTaskMode = tinyTaskModeOverride || tinyTaskModeFromMeta(storyMeta);
+    const barebonesMode = barebonesModeOverride ? "true" : "false";
     const progressStart = Date.now();
     const progressMetrics = buildProgressContext(progressContext, tinyTaskMode);
     const progressSnapshotMs = Date.now() - progressStart;
     const promptStart = Date.now();
-    const promptMetrics = renderPrompt(promptFile, promptRendered, storyMeta, storyBlock, progressContext, tinyTaskMode, iteration, logFile, runMeta);
+    const promptMetrics = renderPrompt(promptFile, promptRendered, storyMeta, storyBlock, progressContext, tinyTaskMode, barebonesMode, iteration, logFile, runMeta);
     const promptRenderMs = Date.now() - promptStart;
     const storyBlockMetrics = measureText(exists(storyBlock) ? fs.readFileSync(storyBlock, "utf-8") : "");
 
@@ -1327,10 +1335,12 @@ async function runBuild() {
     const changedFiles = gitChangedFiles(headBefore, headAfter);
     const dirtyFiles = gitDirtyFiles();
     const tokenStats = result.tokenStats || extractTokenStats(logFile);
-    const tokensUsed = tokenStats ? tokenStats.totalTokens : null;
+    const tokensUsed = tokenStats ? (tokenStats.priceishTokens || tokenStats.totalTokens) : null;
     if (tokenStats) {
+      const stepPriceishTokens = tokenStats.priceishTokens || tokenStats.totalTokens;
       cumulativeTokenStats = {
-        totalTokens: cumulativeTokenStats.totalTokens + tokenStats.totalTokens,
+        priceishTokens: cumulativeTokenStats.priceishTokens + stepPriceishTokens,
+        totalTokens: cumulativeTokenStats.totalTokens + stepPriceishTokens,
         inputTokens: cumulativeTokenStats.inputTokens + Number(tokenStats.inputTokens || 0),
         cachedInputTokens: cumulativeTokenStats.cachedInputTokens + Number(tokenStats.cachedInputTokens || 0),
         uncachedInputTokens: cumulativeTokenStats.uncachedInputTokens + Number(tokenStats.uncachedInputTokens || 0),
@@ -1473,7 +1483,7 @@ async function runBuild() {
       quietEcho(`Build: remaining stories ${remainingAfter}`);
       quietEcho(`Build: log ${logFile}`);
       if (tokenStats) {
-        quietEcho(`Build: tokens ${formatCount(tokenStats.totalTokens)} (total ${formatCount(cumulativeTokenStats.totalTokens)})`);
+        quietEcho(`Build: step price-ish tokens ${formatCount(tokenStats.priceishTokens || tokenStats.totalTokens)} (build total ${formatCount(cumulativeTokenStats.priceishTokens || cumulativeTokenStats.totalTokens)})`);
         const breakdown = formatTokenBreakdown(tokenStats);
         if (breakdown) {
           quietEcho(`Build: token detail ${breakdown}`);
