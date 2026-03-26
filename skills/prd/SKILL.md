@@ -20,7 +20,7 @@ Important:
 
 - Do not implement anything
 - Do not ask the user questions
-- Prefer the fewest stories that still preserve clear, reliable iteration boundaries
+- Prefer small, reliable stories over broad bundled stories
 - Record important uncertainty in `openQuestions`
 
 ## Assumption Rules
@@ -30,7 +30,7 @@ When the request is vague:
 - prefer a new project over assuming a complex existing codebase
 - prefer the smallest stack that fits the request
 - prefer local-only runtime over hosting unless deployment is requested
-- prefer the smallest honest story count for the real scope, not an artificially compressed plan
+- prefer the smallest honest story size for the real scope, not an artificially compressed plan
 
 Always decide:
 
@@ -41,10 +41,11 @@ Always decide:
 ## Story Sizing
 
 Choose story count based on implementation surface area, not on brevity alone.
+Default toward more, smaller stories when the alternative would create long or mixed-scope iterations.
 
-- Small plan: `1-3` stories
-- Medium plan: `4-7` stories
-- Large plan: `8-12` stories
+- Small plan: `2-4` stories
+- Medium plan: `5-9` stories
+- Large plan: `8-14` stories
 
 Use these heuristics:
 
@@ -52,10 +53,11 @@ Use these heuristics:
   - one narrow user-visible capability
   - one subsystem or a very small extension to an existing app
   - little or no persistence, background processing, or cross-cutting polish
+  - only use `1` story when the task is truly tiny and already naturally atomic
 - Medium:
   - several related capabilities or subsystems
   - meaningful state management, persistence, multiple screens, or layered gameplay systems
-  - enough scope that collapsing to `1-3` stories would create overloaded iterations
+  - enough scope that collapsing to `2-4` stories would create overloaded iterations
 - Large:
   - many subsystems or broad workflow coverage
   - significant persistence, integrations, admin surfaces, gameplay progression, or non-trivial polish
@@ -63,8 +65,8 @@ Use these heuristics:
 
 Use plan structure as a clue:
 
-- `1-4` substantive checklist items usually maps to small
-- `5-9` substantive checklist items usually maps to medium
+- `1-3` substantive checklist items usually maps to small
+- `4-8` substantive checklist items usually maps to medium
 - `10+` substantive checklist items usually maps to large
 
 Use subsystem count as a clue:
@@ -74,6 +76,23 @@ Use subsystem count as a clue:
 - `5+` subsystems usually maps to large
 
 If the request already provides a plan, preserve its natural decomposition unless it is obviously too coarse or too fragmented.
+
+Prefer splitting when one story would otherwise do two or more of these at once:
+
+- project setup plus core feature delivery
+- core behavior plus persistence
+- core behavior plus UI polish
+- multiple mechanics or subsystems with different verification modes
+- implementation plus broad integration hardening
+
+Good Ralph stories are:
+
+- independently verifiable
+- narrow enough to retry cheaply
+- small enough that progress logs stay informative
+- vertical slices where possible, not technical mega-batches
+
+Avoid PRDs where most medium features collapse into only `2-3` stories unless the request is genuinely that small.
 
 ## Output Shape
 
@@ -121,6 +140,7 @@ Use this compact JSON shape:
 - If a dependency is needed, call it out directly in acceptance criteria
 - Keep each story small enough for a single Ralph iteration
 - Keep stories vertically sliced and independently verifiable where possible
+- Prefer stories that can be completed in one focused pass without mixing scaffolding, gameplay/business logic, persistence, and polish
 - Do not combine core mechanics, persistence, and polish in one story unless the task is genuinely tiny
 - Do not combine feature delivery and final verification into the same story unless the scope is small
 - Split stories when a single story would otherwise introduce multiple subsystems plus cross-cutting concerns
