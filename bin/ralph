@@ -249,6 +249,14 @@ function commandOutput(command, args) {
   return spawnSync(command, args, { encoding: "utf-8" });
 }
 
+function resolveOptionalModule(moduleName) {
+  try {
+    return require.resolve(`${moduleName}/package.json`, { paths: [repoRoot] });
+  } catch {
+    return null;
+  }
+}
+
 function runLoop(loopPath, loopArgs, options) {
   if (process.platform === "win32") {
     const nativeRunner = path.join(path.dirname(loopPath), "windows-runner.cjs");
@@ -594,6 +602,7 @@ async function main() {
     const codexVersion = commandOutput("codex", ["--version"]);
     const pythonVersion = commandOutput("python", ["--version"]);
     const gitBashPythonVersion = spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" });
+    const playwrightPackage = resolveOptionalModule("playwright");
     const checks = [
       {
         label: "Git Bash (optional helpers)",
@@ -619,6 +628,11 @@ async function main() {
         label: "Bundled templates",
         ok: exists(globalDir),
         detail: globalDir,
+      },
+      {
+        label: "Ralph browser checker",
+        ok: Boolean(playwrightPackage),
+        detail: playwrightPackage || "playwright package missing",
       },
       {
         label: "Bundled skills",

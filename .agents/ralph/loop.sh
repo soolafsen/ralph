@@ -80,6 +80,8 @@ ERRORS_LOG_PATH="${ERRORS_LOG_PATH:-$DEFAULT_ERRORS_LOG_PATH}"
 ACTIVITY_LOG_PATH="${ACTIVITY_LOG_PATH:-$DEFAULT_ACTIVITY_LOG_PATH}"
 TMP_DIR="${TMP_DIR:-$DEFAULT_TMP_DIR}"
 RUNS_DIR="${RUNS_DIR:-$DEFAULT_RUNS_DIR}"
+PROCESS_HELPER_PATH="${PROCESS_HELPER_PATH:-$SCRIPT_DIR/process-helper.cjs}"
+BROWSER_CHECK_HELPER_PATH="${BROWSER_CHECK_HELPER_PATH:-$SCRIPT_DIR/browser-check.cjs}"
 GUARDRAILS_REF="${GUARDRAILS_REF:-$DEFAULT_GUARDRAILS_REF}"
 CONTEXT_REF="${CONTEXT_REF:-$DEFAULT_CONTEXT_REF}"
 ACTIVITY_CMD="${ACTIVITY_CMD:-$DEFAULT_ACTIVITY_CMD}"
@@ -112,9 +114,28 @@ ERRORS_LOG_PATH="$(abs_path "$ERRORS_LOG_PATH")"
 ACTIVITY_LOG_PATH="$(abs_path "$ACTIVITY_LOG_PATH")"
 TMP_DIR="$(abs_path "$TMP_DIR")"
 RUNS_DIR="$(abs_path "$RUNS_DIR")"
+PROCESS_HELPER_PATH="$(abs_path "$PROCESS_HELPER_PATH")"
+BROWSER_CHECK_HELPER_PATH="$(abs_path "$BROWSER_CHECK_HELPER_PATH")"
+STAGED_HELPER_DIR="$TMP_DIR/ralph-tools"
+STAGED_PROCESS_HELPER_PATH="$STAGED_HELPER_DIR/process-helper.cjs"
+STAGED_BROWSER_CHECK_HELPER_PATH="$STAGED_HELPER_DIR/browser-check.cjs"
 GUARDRAILS_REF="$(abs_path "$GUARDRAILS_REF")"
 CONTEXT_REF="$(abs_path "$CONTEXT_REF")"
 ACTIVITY_CMD="$(abs_path "$ACTIVITY_CMD")"
+
+stage_helper_wrappers() {
+  mkdir -p "$STAGED_HELPER_DIR"
+  python3 - "$PROCESS_HELPER_PATH" "$STAGED_PROCESS_HELPER_PATH" "$BROWSER_CHECK_HELPER_PATH" "$STAGED_BROWSER_CHECK_HELPER_PATH" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+process_src, process_dst, browser_src, browser_dst = sys.argv[1:5]
+
+Path(process_dst).write_text(f"#!/usr/bin/env node\nrequire({json.dumps(process_src)});\n")
+Path(browser_dst).write_text(f"#!/usr/bin/env node\nrequire({json.dumps(browser_src)});\n")
+PY
+}
 
 require_agent() {
   local agent_cmd="${1:-$AGENT_CMD}"
@@ -547,6 +568,7 @@ if [ "$MODE" != "prd" ] && [ ! -f "$PRD_PATH" ]; then
 fi
 
 mkdir -p "$(dirname "$PROGRESS_PATH")" "$TMP_DIR" "$RUNS_DIR"
+stage_helper_wrappers()
 
 if [ ! -f "$PROGRESS_PATH" ]; then
   {
@@ -616,7 +638,7 @@ render_prompt() {
   local iter="$8"
   local run_log="$9"
   local run_meta="${10}"
-  python3 - "$src" "$dst" "$PRD_PATH" "$AGENTS_PATH" "$PROGRESS_PATH" "$progress_context" "$ROOT_DIR" "$ERRORS_LOG_PATH" "$NO_COMMIT" "$tiny_task_mode" "$story_meta" "$story_block" "$run_id" "$iter" "$run_log" "$run_meta" "$BROWSER_VISIBILITY" <<'PY'
+  python3 - "$src" "$dst" "$PRD_PATH" "$AGENTS_PATH" "$PROGRESS_PATH" "$progress_context" "$ROOT_DIR" "$ERRORS_LOG_PATH" "$NO_COMMIT" "$tiny_task_mode" "$story_meta" "$story_block" "$run_id" "$iter" "$run_log" "$run_meta" "$BROWSER_VISIBILITY" "$TMP_DIR" "$STAGED_PROCESS_HELPER_PATH" "$STAGED_BROWSER_CHECK_HELPER_PATH" <<'PY'
 import sys
 from pathlib import Path
 
@@ -632,6 +654,9 @@ iteration = sys.argv[14] if len(sys.argv) > 14 else ""
 run_log = sys.argv[15] if len(sys.argv) > 15 else ""
 run_meta = sys.argv[16] if len(sys.argv) > 16 else ""
 browser_visibility = sys.argv[17] if len(sys.argv) > 17 else "headless"
+tmp_dir = sys.argv[18] if len(sys.argv) > 18 else ""
+process_helper = sys.argv[19] if len(sys.argv) > 19 else ""
+browser_check_helper = sys.argv[20] if len(sys.argv) > 20 else ""
 repl = {
     "PRD_PATH": prd,
     "AGENTS_PATH": agents,
@@ -645,7 +670,10 @@ repl = {
     "ITERATION": iteration,
     "RUN_LOG_PATH": run_log,
     "RUN_META_PATH": run_meta,
+    "TMP_DIR": tmp_dir,
     "BROWSER_VISIBILITY": browser_visibility,
+    "PROCESS_HELPER_PATH": process_helper,
+    "BROWSER_CHECK_HELPER_PATH": browser_check_helper,
 }
 story = {"id": "", "title": "", "block": ""}
 quality_gates = []

@@ -14,8 +14,11 @@ Complete exactly one story from the PRD, verify it, and record the outcome.
 - Iteration: {{ITERATION}}
 - Run Log: {{RUN_LOG_PATH}}
 - Run Summary: {{RUN_META_PATH}}
+- Run Temp Dir: {{TMP_DIR}}
 - Tiny Task Mode: {{TINY_TASK_MODE}}
 - Browser Verification Visibility: {{BROWSER_VISIBILITY}}
+- Ralph Process Helper: {{PROCESS_HELPER_PATH}}
+- Ralph Browser Check Helper: {{BROWSER_CHECK_HELPER_PATH}}
 
 ## Selected Story
 - ID: {{STORY_ID}}
@@ -41,6 +44,12 @@ If the story block is empty, stop and report that the PRD story could not be par
 - Infer startup instructions from the repo itself. Use signals such as `package.json` scripts, `pyproject.toml`, `requirements.txt`, `Cargo.toml`, `go.mod`, `Makefile`, or other obvious project entrypoints. Do not wait for the plan or user request to mention docs.
 - For frontend or UI verification, prefer headless browser checks when Browser Verification Visibility is `headless`. Open a visible browser window only when Browser Verification Visibility is `show`.
 - Browser Verification Visibility changes visibility only. It does not remove the requirement to verify frontend or UI changes in a browser.
+- For Codex on Windows, do not use `cmd /c start`, `start /min`, `Start-Process`, or ad hoc shell-specific background tricks for local frontend verification.
+- Prefer a single one-shot `serve-and-run` call through the Ralph browser check helper. It starts the local server hidden, waits for readiness, runs the browser script, and shuts the server down before exiting.
+- Example headless local app check:
+  `node "{{BROWSER_CHECK_HELPER_PATH}}" serve-and-run --cwd "{{REPO_ROOT}}" --url http://127.0.0.1:4173/ --ready-url http://127.0.0.1:4173/ --script "{{TMP_DIR}}/verify-{{STORY_ID}}.mjs" -- npm run dev -- --host 127.0.0.1 --port 4173 --strictPort`
+- Only fall back to the Ralph process helper for longer-lived manual debugging flows that genuinely need a server to outlive the verification command.
+- Only use the `dev-browser` skill's persistent relay or extension modes for remote, unknown, or session-dependent websites. Do not use them for local app smoke tests.
 - If the repo has a runnable workflow, end your final response with a compact machine-readable `run_instructions` block containing one command or next step per line.
 - Keep that block concise and shell-neutral. Include exact files or URLs to open where relevant. Omit the block only if there is genuinely no runnable workflow to describe yet.
 

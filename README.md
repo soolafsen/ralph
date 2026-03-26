@@ -16,6 +16,7 @@ The main goals of this fork are:
 Compared with the upstream Ralph flow, this fork adds or changes:
 
 - Windows-native build and PRD supervision so Ralph can recover control even when agent output lingers after completion
+- first-class helper scripts for local browser verification and hidden Windows process handling
 - Bash fallback handling for helper scripts and compatibility paths
 - Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
 - slimmer build prompts with a compact progress snapshot instead of feeding large context every run
@@ -80,6 +81,8 @@ The main skills are:
 - `prd`
 - `commit`
 - `dev-browser`
+
+For local app verification during Ralph build runs, the bundled Ralph browser helper is now preferred over the persistent `dev-browser` relay server. The main path is a single `serve-and-run` helper call that starts the dev server, runs the headless Playwright check, and then tears the server down. The relay skill remains useful for remote or session-dependent websites.
 
 ## How Ralph Works
 
@@ -185,6 +188,7 @@ ralph doctor
 - whether the `prd` skill exists for Codex in local or global skill locations
 - whether local templates are overriding bundled global templates
 - which plan files, if any, were detected in the current working directory
+- whether Ralph's built-in browser checker dependency is installed
 
 ## Tiny Task Mode
 
@@ -309,6 +313,8 @@ Important Windows-specific behavior in this fork:
 
 - `ralph build` and `ralph prd` use a native Node supervisor on Windows
 - the supervisor watches for `<promise>COMPLETE</promise>` and can terminate lingering child trees after a short grace period
+- local frontend checks should use Ralph's direct Playwright helper in one-shot `serve-and-run` mode by default, not the persistent `dev-browser` relay
+- hidden long-running server helpers still exist, but they are secondary to the one-shot verification path for Codex on Windows
 - shell scripts are normalized to LF in the repo
 - the loop banner uses ASCII output to avoid mojibake in Windows terminals
 

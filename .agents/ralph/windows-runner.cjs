@@ -43,6 +43,8 @@ const rootDir = path.resolve(process.env.RALPH_ROOT || process.cwd());
 const scriptDir = path.resolve(__dirname);
 const configPath = path.join(scriptDir, "config.sh");
 const promptFile = path.resolve(process.env.PROMPT_BUILD || path.join(scriptDir, "PROMPT_build.md"));
+const processHelperPath = path.join(scriptDir, "process-helper.cjs");
+const browserCheckHelperPath = path.join(scriptDir, "browser-check.cjs");
 const prdPath = path.resolve(process.env.PRD_PATH || path.join(rootDir, ".agents", "tasks", "prd.json"));
 const progressPath = path.resolve(process.env.PROGRESS_PATH || path.join(rootDir, ".ralph", "progress.md"));
 const agentsPath = path.resolve(process.env.AGENTS_PATH || path.join(rootDir, "AGENTS.md"));
@@ -51,6 +53,9 @@ const errorsLogPath = path.resolve(process.env.ERRORS_LOG_PATH || path.join(root
 const activityLogPath = path.resolve(process.env.ACTIVITY_LOG_PATH || path.join(rootDir, ".ralph", "activity.log"));
 const tmpDir = path.resolve(process.env.TMP_DIR || path.join(rootDir, ".ralph", ".tmp"));
 const runsDir = path.resolve(process.env.RUNS_DIR || path.join(rootDir, ".ralph", "runs"));
+const stagedHelperDir = path.join(tmpDir, "ralph-tools");
+const stagedProcessHelperPath = path.join(stagedHelperDir, "process-helper.cjs");
+const stagedBrowserCheckHelperPath = path.join(stagedHelperDir, "browser-check.cjs");
 const quietMode = String(process.env.RALPH_QUIET || "0") === "1";
 const staleSeconds = Number(process.env.STALE_SECONDS || "300");
 const progressTailLines = Number(process.env.PROGRESS_TAIL_LINES || "20");
@@ -124,6 +129,22 @@ function ensureFile(filePath, content) {
     ensureDir(path.dirname(filePath));
     fs.writeFileSync(filePath, content);
   }
+}
+
+function escapeJsString(value) {
+  return JSON.stringify(String(value));
+}
+
+function stageHelperWrappers() {
+  ensureDir(stagedHelperDir);
+  fs.writeFileSync(
+    stagedProcessHelperPath,
+    `#!/usr/bin/env node\nrequire(${escapeJsString(processHelperPath)});\n`,
+  );
+  fs.writeFileSync(
+    stagedBrowserCheckHelperPath,
+    `#!/usr/bin/env node\nrequire(${escapeJsString(browserCheckHelperPath)});\n`,
+  );
 }
 
 function commandExists(command) {
@@ -394,7 +415,10 @@ function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressC
     ITERATION: String(iteration),
     RUN_LOG_PATH: runLog,
     RUN_META_PATH: runMetaPath,
+    TMP_DIR: tmpDir,
     BROWSER_VISIBILITY: browserVisibility,
+    PROCESS_HELPER_PATH: stagedProcessHelperPath,
+    BROWSER_CHECK_HELPER_PATH: stagedBrowserCheckHelperPath,
     STORY_ID: meta.id || "",
     STORY_TITLE: meta.title || "",
     STORY_BLOCK: storyBlock,
@@ -779,6 +803,7 @@ async function runPrd() {
 function initializeFiles() {
   ensureDir(tmpDir);
   ensureDir(runsDir);
+  stageHelperWrappers();
   ensureFile(progressPath, `# Progress Log\nStarted: ${new Date().toString()}\n\n## Codebase Patterns\n- (add reusable patterns here)\n\n---\n`);
   ensureFile(guardrailsPath, "# Guardrails (Signs)\n\n> Lessons learned from failures. Read before acting.\n\n## Core Signs\n\n### Sign: Read Before Writing\n- **Trigger**: Before modifying any file\n- **Instruction**: Read the file first\n- **Added after**: Core principle\n\n### Sign: Test Before Commit\n- **Trigger**: Before committing changes\n- **Instruction**: Run required tests and verify outputs\n- **Added after**: Core principle\n\n---\n\n## Learned Signs\n\n");
   ensureFile(errorsLogPath, "# Error Log\n\n> Failures and repeated issues. Use this to add guardrails.\n\n");

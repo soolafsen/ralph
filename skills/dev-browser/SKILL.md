@@ -9,17 +9,42 @@ Browser automation that maintains page state across script executions. Write sma
 
 ## Choosing Your Approach
 
-- **Local/source-available sites**: Read the source code first to write selectors directly
+- **Local/source-available sites**: Prefer a direct Playwright script in headless mode. Do not start the persistent relay/server unless you specifically need named-page persistence across multiple scripts.
 - **Unknown page layouts**: Use `getAISnapshot()` to discover elements and `selectSnapshotRef()` to interact with them
 - **Visual feedback**: Take screenshots to see what the user sees
 
 ## Setup
 
-Two modes available. Ask the user if unclear which to use.
+Three modes are available. Prefer the lightest one that fits the task.
+
+### Direct Playwright Mode (Preferred for local app verification)
+
+Use this for source-available local apps, routine smoke tests, and one-off verification runs. This avoids the relay server entirely and is the default path Ralph should use for local frontend stories.
+
+```bash
+cd skills/dev-browser && npx playwright install chromium
+cd skills/dev-browser && npx tsx <<'EOF'
+import { chromium } from "playwright";
+
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+
+await page.goto("http://127.0.0.1:4173/", { waitUntil: "domcontentloaded" });
+await page.waitForLoadState("networkidle").catch(() => {});
+
+console.log({ title: await page.title(), url: page.url() });
+
+await browser.close();
+EOF
+```
+
+Use headed mode only when the user explicitly wants a visible browser.
 
 ### Standalone Mode (Default)
 
-Launches a new Chromium browser for fresh automation sessions.
+Launches a new Chromium browser plus the persistent dev-browser server for fresh automation sessions.
+
+Use this only when you need named-page persistence across multiple scripts.
 
 ```bash
 ./skills/dev-browser/server.sh &
@@ -51,6 +76,8 @@ Wait for `Waiting for extension to connect...` followed by `Extension connected`
 If the extension hasn't connected yet, tell the user to launch and activate it. Download link: https://github.com/SawyerHood/dev-browser/releases
 
 ## Writing Scripts
+
+For local app verification, prefer the direct Playwright mode above and write normal Playwright scripts.
 
 > **Run all scripts from `skills/dev-browser/` directory.** The `@/` import alias requires this directory's config.
 

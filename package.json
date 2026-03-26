@@ -6,12 +6,13 @@
     "ralph": "bin/ralph"
   },
   "scripts": {
-    "test": "node tests/cli-smoke.mjs && node tests/agent-loops.mjs",
+    "test": "node tests/cli-smoke.mjs && node tests/process-helper.mjs && node tests/agent-loops.mjs",
     "test:real": "node tests/real-agents.mjs",
     "test:ping": "node tests/agent-ping.mjs"
   },
   "dependencies": {
-    "@clack/prompts": "^0.7.0"
+    "@clack/prompts": "^0.7.0",
+    "playwright": "^1.54.2"
   },
   "license": "MIT"
 }
