@@ -54,6 +54,18 @@ npm uninstall -g @soolafsen/ralph
 npm i -g github:soolafsen/ralph#main
 ```
 
+If a repo already contains `.agents/ralph`, that local template copy overrides the bundled global install for that repo. After upgrading the global CLI, either remove the local override or refresh it:
+
+```bash
+rmdir /s /q .agents\ralph
+```
+
+or:
+
+```bash
+ralph install --force
+```
+
 ## Project Setup
 
 Install local templates into the current project:
@@ -234,16 +246,25 @@ Quiet mode is intended to show only major stage changes, for example:
 - story completed / failed / incomplete
 - remaining story count
 - log file path
+- per-step token totals and cumulative token totals when available
+- end-of-run install or startup commands when Ralph can infer them
 
 The detailed agent output still goes to `.ralph/runs/`.
 
 The quiet heartbeat is now based on actual run-log activity:
 
 - `.` means the run log grew since the last check
-- `[idle 30s]`, `[idle 60s]`, and so on mean the process is still alive but the log has not changed for that long
-- quiet mode warns when a run is idle for a long time or when a completion marker appears but the process does not unwind
+- each quiet-mode status line is prefixed with a 24-hour timestamp like `[19:27:32]`
+- `[thinking 30s]`, `[thinking 60s]`, and so on mean the process is still alive but the log has not changed for that long
+- quiet mode warns when a run is quiet for a long time or when a completion marker appears but the process does not unwind
 
 That makes quiet mode a better liveness signal without pretending stalled output is active progress.
+
+If the agent does not emit a `<run_instructions>` block, Ralph falls back to the essentials it can infer from:
+
+- `AGENTS.md`
+- `README.md`
+- `package.json` scripts
 
 If you interrupt a suspected hang:
 
