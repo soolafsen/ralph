@@ -16,6 +16,7 @@ The main goals of this fork are:
 Compared with the upstream Ralph flow, this fork adds or changes:
 
 - Windows-native build and PRD supervision so Ralph can recover control even when agent output lingers after completion
+- a Windows-first Codex SDK backend that prefers structured turn events over raw log/session scraping, with automatic CLI fallback
 - first-class helper scripts for local browser verification and hidden Windows process handling
 - Bash fallback handling for helper scripts and compatibility paths
 - Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
@@ -202,6 +203,9 @@ ralph doctor
 - whether local templates are overriding bundled global templates
 - which plan files, if any, were detected in the current working directory
 - whether Ralph's built-in browser checker dependency is installed
+- whether `@openai/codex-sdk` is available
+- which Codex backend Ralph would select on this machine
+- why `auto` would fall back to the legacy CLI path
 
 ## Tiny Task Mode
 
@@ -332,11 +336,27 @@ The Codex defaults in this fork use `codex exec`.
 
 By default, Ralph now sets Codex `model_reasoning_effort` to `medium` for its bundled Codex commands. That keeps the default build loop from inheriting a globally configured `high` effort setting unless you explicitly override the agent command.
 
+You can override the Codex backend selection with:
+
+```bash
+set RALPH_CODEX_BACKEND=auto
+set RALPH_CODEX_BACKEND=sdk
+set RALPH_CODEX_BACKEND=cli
+```
+
+Backend meanings:
+
+- `auto`: prefer the SDK on Windows for Codex, then fall back to the legacy CLI path if the SDK is unavailable
+- `sdk`: require the SDK path and fail clearly if it cannot be loaded
+- `cli`: force the legacy `codex exec` orchestration path
+
 ## Windows Notes
 
 Important Windows-specific behavior in this fork:
 
 - `ralph build` and `ralph prd` use a native Node supervisor on Windows
+- on Windows with Codex, Ralph now prefers `@openai/codex-sdk` for structured events, token usage, and cancellation
+- if the SDK cannot be used and `RALPH_CODEX_BACKEND=auto`, Ralph falls back to the legacy CLI path and records the fallback
 - the supervisor watches for `<promise>COMPLETE</promise>` and can terminate lingering child trees after a short grace period
 - local frontend checks should use Ralph's direct Playwright helper in one-shot `serve-and-run` mode by default, not the persistent `dev-browser` relay
 - hidden long-running server helpers still exist, but they are secondary to the one-shot verification path for Codex on Windows

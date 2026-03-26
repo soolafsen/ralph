@@ -4,6 +4,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const readline = require("readline");
+const { pathToFileURL } = require("url");
+const { resolveCodexBackend } = require(path.join(__dirname, "codex-backend.cjs"));
 
 const args = process.argv.slice(2);
 let mode = "build";
@@ -74,11 +76,15 @@ const hangWarningSeconds = Number(process.env.RALPH_HANG_WARNING_SECONDS || "120
 
 let hasError = false;
 let activeChild = null;
+let activeAbortController = null;
 let interruptRequested = false;
 let forceKillRequested = false;
 
 process.on("SIGINT", () => {
   interruptRequested = true;
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
   if (activeChild?.pid) {
     killProcessTree(activeChild.pid, forceKillRequested);
     forceKillRequested = true;
@@ -87,6 +93,9 @@ process.on("SIGINT", () => {
 
 process.on("SIGTERM", () => {
   interruptRequested = true;
+  if (activeAbortController) {
+    activeAbortController.abort();
+  }
   if (activeChild?.pid) {
     killProcessTree(activeChild.pid, true);
   }
@@ -585,6 +594,7 @@ function writeRunMeta(metaPath, payload) {
     `- Duration: ${payload.duration}s`,
     `- Tokens: ${payload.tokens == null ? "unknown" : formatCount(payload.tokens)}`,
     `- Status: ${payload.status}`,
+    `- Backend: ${payload.backend || "cli"}`,
     `- Log: ${payload.logFile}`,
     "",
   );
@@ -890,6 +900,26 @@ function killProcessTree(pid, force) {
   });
 }
 
+async function resolveCodexBackendForRun() {
+  return resolveCodexBackend({
+    platform: process.platform,
+    env: process.env,
+  });
+}
+
+async function requireConfiguredAgent(agentCommand) {
+  const backend = await resolveCodexBackendForRun();
+  if (backend.error) {
+    console.error(backend.error);
+    process.exit(1);
+  }
+  if (backend.selected === "sdk") {
+    return backend;
+  }
+  requireAgent(agentCommand);
+  return backend;
+}
+
 function createAgentSpawn(command, promptPath) {
   const parts = splitCommand(command);
   if (parts.length === 0) {
@@ -913,7 +943,7 @@ function createAgentSpawn(command, promptPath) {
   };
 }
 
-function runAgentCommand(agentCommand, promptPath, logFile, label) {
+function runCliAgentCommand(agentCommand, promptPath, logFile, label) {
   return new Promise((resolve) => {
     let child;
     try {
@@ -1034,6 +1064,94 @@ function runAgentCommand(agentCommand, promptPath, logFile, label) {
   });
 }
 
+async function runSdkAgentCommand(promptPath, logFile, label) {
+  const moduleUrl = pathToFileURL(path.join(scriptDir, "codex-sdk-runner.mjs")).href;
+  const { runCodexSdkTurn } = await import(moduleUrl);
+  return runCodexSdkTurn({
+    promptPath,
+    logFile,
+    label,
+    quietMode,
+    rootDir,
+    env: process.env,
+    completeMarker,
+    heartbeatSeconds,
+    idleNoticeSeconds,
+    hangWarningSeconds,
+    modelReasoningEffort: process.env.RALPH_CODEX_MODEL_REASONING_EFFORT || "medium",
+    model: process.env.RALPH_CODEX_MODEL || undefined,
+    onController(controller) {
+      activeAbortController = controller;
+    },
+  });
+}
+
+async function runAgentCommand(agentCommand, promptPath, logFile, label) {
+  const backend = await resolveCodexBackendForRun();
+  if (backend.error) {
+    fs.writeFileSync(logFile, `${backend.error}\n`);
+    return {
+      status: 1,
+      interrupted: false,
+      completedAndTerminated: false,
+      completed: false,
+      backend: "sdk",
+      tokenStats: null,
+    };
+  }
+
+  if (backend.selected === "sdk") {
+    try {
+      return {
+        ...(await runSdkAgentCommand(promptPath, logFile, label)),
+        backendInfo: backend,
+      };
+    } catch (error) {
+      const message = error && error.stack ? error.stack : String(error);
+      const allowFallback = backend.requested === "auto" && error && error.allowFallback;
+      ensureDir(path.dirname(logFile));
+      if (allowFallback) {
+        const fallbackMessage = `SDK unavailable, falling back to CLI: ${error.message || String(error)}`;
+        logActivity(`SDK fallback -> CLI (${error.message || String(error)})`);
+        if (quietMode) {
+          quietEcho(`Runner: ${fallbackMessage}`);
+        }
+        const cliResult = await runCliAgentCommand(agentCommand, promptPath, logFile, label);
+        fs.appendFileSync(logFile, `sdk startup error: ${message}\n`);
+        fs.appendFileSync(logFile, `${fallbackMessage}\n`);
+        return {
+          ...cliResult,
+          backend: "cli",
+          backendInfo: {
+            ...backend,
+            selected: "cli",
+            fallbackReason: error.message || String(error),
+          },
+          completed: hasCompletionMarker(logFile),
+          tokenStats: extractTokenStats(logFile),
+        };
+      }
+      return {
+        status: 1,
+        interrupted: false,
+        completedAndTerminated: false,
+        completed: false,
+        backend: "sdk",
+        backendInfo: backend,
+        tokenStats: null,
+      };
+    }
+  }
+
+  return {
+    ...(await runCliAgentCommand(agentCommand, promptPath, logFile, label)),
+    backend: "cli",
+    backendInfo: backend,
+    completed: hasCompletionMarker(logFile),
+    tokenStats: extractTokenStats(logFile),
+  };
+}
+
 async function runPrd() {
   const config = parseConfigShell(configPath);
   const prdAgentCommand = process.env.PRD_AGENT_CMD || process.env.AGENT_CMD || config.PRD_AGENT_CMD || config.AGENT_CMD || "codex exec --yolo --skip-git-repo-check -";
@@ -1057,7 +1175,7 @@ async function runPrd() {
     process.exit(0);
   }
 
-  requireAgent(prdAgentCommand);
+  await requireConfiguredAgent(prdAgentCommand);
 
   const prdPromptFile = path.join(tmpDir, `prd-prompt-${Date.now()}.md`);
   const prdLogFile = path.join(runsDir, `prd-${runTag}.log`);
@@ -1080,7 +1198,7 @@ async function runPrd() {
 
   if (quietMode) quietEcho("PRD: starting");
   const result = await runAgentCommand(prdAgentCommand, prdPromptFile, prdLogFile, "PRD: working");
-  const prdTokenStats = extractTokenStats(prdLogFile);
+  const prdTokenStats = result.tokenStats || extractTokenStats(prdLogFile);
   if (quietMode) {
     quietEcho(result.status === 0 ? `PRD: complete (full log: ${prdLogFile})` : `PRD: failed (full log: ${prdLogFile})`);
     if (prdTokenStats) {
@@ -1108,7 +1226,7 @@ async function runBuild() {
   const config = parseConfigShell(configPath);
   const agentCommand = process.env.AGENT_CMD || config.AGENT_CMD || "codex exec --yolo --skip-git-repo-check -";
   if (process.env.RALPH_DRY_RUN !== "1") {
-    requireAgent(agentCommand);
+    await requireConfiguredAgent(agentCommand);
   }
   initializeFiles();
   let cumulativeTokenStats = {
@@ -1208,7 +1326,7 @@ async function runBuild() {
     const commitList = gitCommitList(headBefore, headAfter);
     const changedFiles = gitChangedFiles(headBefore, headAfter);
     const dirtyFiles = gitDirtyFiles();
-    const tokenStats = extractTokenStats(logFile);
+    const tokenStats = result.tokenStats || extractTokenStats(logFile);
     const tokensUsed = tokenStats ? tokenStats.totalTokens : null;
     if (tokenStats) {
       cumulativeTokenStats = {
@@ -1240,6 +1358,7 @@ async function runBuild() {
       tokens: tokensUsed,
       tokenStats,
       status: statusLabel,
+      backend: result.backend || "cli",
       logFile,
       headBefore,
       headAfter,
@@ -1276,6 +1395,7 @@ async function runBuild() {
       tokensUsed,
       tokenStats,
       status: statusLabel,
+      backend: result.backend || "cli",
       prompt: {
         bytes: promptMetrics.bytes,
         words: promptMetrics.words,
@@ -1299,7 +1419,7 @@ async function runBuild() {
     appendRunSummary(`${formatLogDate(new Date())} | run=${runTag} | iter=${iteration} | mode=${mode} | story=${storyId} | duration=${iterDuration}s | tokens=${tokensUsed == null ? "unknown" : tokensUsed} | status=${statusLabel}`);
 
     if (interrupted) {
-      const completePresent = hasCompletionMarker(logFile);
+      const completePresent = result.completed ?? hasCompletionMarker(logFile);
       const interruptAction = await promptInterruptAction(storyId, completePresent);
       if (interruptAction === "next") {
         updateStoryStatus(storyId, "done");
@@ -1332,7 +1452,7 @@ async function runBuild() {
       } else {
         console.log("Iteration failed; story reset to open.");
       }
-    } else if (hasCompletionMarker(logFile)) {
+    } else if (result.completed ?? hasCompletionMarker(logFile)) {
       updateStoryStatus(storyId, "done");
       if (quietMode) {
         quietEcho(`Build: story ${storyId} complete`);
