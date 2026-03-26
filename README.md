@@ -145,6 +145,12 @@ ralph prd --quiet
 ralph build 1 --quiet
 ```
 
+Allow visible browser windows for frontend verification:
+
+```bash
+ralph build 1 --show-browser
+```
+
 Force tiny-task mode:
 
 ```bash
@@ -227,6 +233,29 @@ Quiet mode is intended to show only major stage changes, for example:
 - log file path
 
 The detailed agent output still goes to `.ralph/runs/`.
+
+## Browser Visibility
+
+For frontend or UI stories, Ralph still expects browser verification by default.
+
+By default, this fork now guides the agent to prefer headless browser verification so multi-iteration runs do not keep opening visible tabs or windows.
+
+If you do want a real browser window during those checks, use:
+
+```bash
+ralph build 1 --show-browser
+```
+
+What `--show-browser` means:
+
+- it allows visible browser windows or tabs during frontend verification
+- it is intended for manual inspection, demos, or debugging browser-specific issues
+
+What `--show-browser` does not mean:
+
+- it does not disable browser verification
+- it does not force browser verification for non-frontend stories
+- it does not change quiet mode, iteration count, or commit behavior
 
 ## Stale Story Recovery
 

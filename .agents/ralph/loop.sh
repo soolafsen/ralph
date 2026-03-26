@@ -89,6 +89,7 @@ STALE_SECONDS="${STALE_SECONDS:-$DEFAULT_STALE_SECONDS}"
 PROGRESS_TAIL_LINES="${PROGRESS_TAIL_LINES:-$DEFAULT_PROGRESS_TAIL_LINES}"
 TINY_TASK_STORY_MAX="${TINY_TASK_STORY_MAX:-$DEFAULT_TINY_TASK_STORY_MAX}"
 TINY_TASK_MODE_OVERRIDE="${TINY_TASK_MODE_OVERRIDE:-}"
+BROWSER_VISIBILITY="${RALPH_BROWSER_VISIBILITY:-headless}"
 RUN_TAG="$(date +%Y%m%d-%H%M%S)-$$"
 
 abs_path() {
@@ -449,7 +450,7 @@ render_prompt() {
   local iter="$8"
   local run_log="$9"
   local run_meta="${10}"
-  python3 - "$src" "$dst" "$PRD_PATH" "$AGENTS_PATH" "$PROGRESS_PATH" "$progress_context" "$ROOT_DIR" "$ERRORS_LOG_PATH" "$NO_COMMIT" "$tiny_task_mode" "$story_meta" "$story_block" "$run_id" "$iter" "$run_log" "$run_meta" <<'PY'
+  python3 - "$src" "$dst" "$PRD_PATH" "$AGENTS_PATH" "$PROGRESS_PATH" "$progress_context" "$ROOT_DIR" "$ERRORS_LOG_PATH" "$NO_COMMIT" "$tiny_task_mode" "$story_meta" "$story_block" "$run_id" "$iter" "$run_log" "$run_meta" "$BROWSER_VISIBILITY" <<'PY'
 import sys
 from pathlib import Path
 
@@ -464,6 +465,7 @@ run_id = sys.argv[13] if len(sys.argv) > 13 else ""
 iteration = sys.argv[14] if len(sys.argv) > 14 else ""
 run_log = sys.argv[15] if len(sys.argv) > 15 else ""
 run_meta = sys.argv[16] if len(sys.argv) > 16 else ""
+browser_visibility = sys.argv[17] if len(sys.argv) > 17 else "headless"
 repl = {
     "PRD_PATH": prd,
     "AGENTS_PATH": agents,
@@ -477,6 +479,7 @@ repl = {
     "ITERATION": iteration,
     "RUN_LOG_PATH": run_log,
     "RUN_META_PATH": run_meta,
+    "BROWSER_VISIBILITY": browser_visibility,
 }
 story = {"id": "", "title": "", "block": ""}
 quality_gates = []

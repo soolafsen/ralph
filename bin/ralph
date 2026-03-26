@@ -21,6 +21,7 @@ let prdOutPath = null;
 let tinyMode = false;
 let planPath = null;
 let quietMode = false;
+let showBrowser = false;
 
 function exists(p) {
   try {
@@ -80,7 +81,7 @@ Commands:
   ping                                Minimal agent health check
   doctor                              Check Windows/Codex/Git Bash prerequisites
   log "<message>"                     Append to .ralph/activity.log
-  build [n] [--no-commit] [--tiny] [--quiet]  Run build loop (default)
+  build [n] [--no-commit] [--tiny] [--quiet] [--show-browser]  Run build loop (default)
   overview                            Render a human overview from PRD JSON
   help                                Show this message
 
@@ -91,12 +92,14 @@ Options:
   --progress <path>                   Override progress log path
   --tiny                              Force tiny-task prompt mode for build runs
   --quiet                             Terse terminal output; full logs stay on disk
+  --show-browser                      For browser verification, allow a visible browser window instead of preferring headless checks
   --force-skills                      Reinstall bundled skills even if they exist
   --agent <codex|claude|droid|opencode>  Override agent runner
 
 Notes:
 - Uses local .agents/ralph if present; otherwise uses bundled defaults.
 - State and logs are written to .ralph/ in the project.
+- Browser verification still happens by default for frontend work. --show-browser only changes browser visibility for those checks.
 `);
 }
 
@@ -368,6 +371,10 @@ for (let i = 0; i < rawArgs.length; i += 1) {
   }
   if (arg === "--quiet") {
     quietMode = true;
+    continue;
+  }
+  if (arg === "--show-browser") {
+    showBrowser = true;
     continue;
   }
   if (arg.startsWith("--prd=")) {
@@ -739,6 +746,7 @@ async function main() {
   if (progressPath) env.PROGRESS_PATH = progressPath;
   if (tinyMode) env.TINY_TASK_MODE_OVERRIDE = "true";
   if (quietMode) env.RALPH_QUIET = "1";
+  if (showBrowser) env.RALPH_BROWSER_VISIBILITY = "show";
   if (templateDir === globalDir) {
     env.PROMPT_BUILD = path.join(templateDir, "PROMPT_build.md");
     env.GUARDRAILS_REF = path.join(templateDir, "references", "GUARDRAILS.md");
