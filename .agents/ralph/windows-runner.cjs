@@ -126,7 +126,11 @@ function ensureFile(filePath, content) {
 }
 
 function commandExists(command) {
-  const result = spawnSync(command, ["--version"], { stdio: "ignore", shell: false });
+  const result = spawnSync("where", [command], {
+    stdio: "ignore",
+    shell: false,
+    windowsHide: true,
+  });
   return result.status === 0;
 }
 
@@ -548,24 +552,25 @@ function killProcessTree(pid, force) {
 }
 
 function createAgentSpawn(command, promptPath) {
-  if (command.includes("{prompt}")) {
-    const rendered = command.replaceAll("{prompt}", `"${promptPath.replace(/"/g, '\\"')}"`);
-    return {
-      cmd: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", rendered],
-      options: { shell: false, stdio: ["ignore", "pipe", "pipe"], cwd: rootDir, env: process.env, windowsHide: true },
-    };
-  }
   const parts = splitCommand(command);
   if (parts.length === 0) {
     throw new Error("AGENT_CMD is empty.");
   }
-  const [cmd, ...cmdArgs] = parts;
+  const usesPromptPlaceholder = command.includes("{prompt}");
+  const rendered = usesPromptPlaceholder
+    ? command.replaceAll("{prompt}", `"${promptPath.replace(/"/g, '\\"')}"`)
+    : command;
   return {
-    cmd,
-    args: cmdArgs,
-    options: { shell: false, stdio: ["pipe", "pipe", "pipe"], cwd: rootDir, env: process.env, windowsHide: true },
-    stdinPath: promptPath,
+    cmd: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", rendered],
+    options: {
+      shell: false,
+      stdio: [usesPromptPlaceholder ? "ignore" : "pipe", "pipe", "pipe"],
+      cwd: rootDir,
+      env: process.env,
+      windowsHide: true,
+    },
+    stdinPath: usesPromptPlaceholder ? null : promptPath,
   };
 }
 

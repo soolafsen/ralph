@@ -232,6 +232,23 @@ function resolveBashExecutable() {
   return "bash";
 }
 
+function commandExists(command) {
+  if (process.platform === "win32") {
+    return spawnSync("where", [command], { stdio: "ignore" }).status === 0;
+  }
+  return spawnSync(`command -v ${command}`, { shell: true, stdio: "ignore" }).status === 0;
+}
+
+function commandOutput(command, args) {
+  if (process.platform === "win32") {
+    return spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", `${command} ${args.join(" ")}`], {
+      encoding: "utf-8",
+      windowsHide: true,
+    });
+  }
+  return spawnSync(command, args, { encoding: "utf-8" });
+}
+
 function runLoop(loopPath, loopArgs, options) {
   if (process.platform === "win32") {
     const nativeRunner = path.join(path.dirname(loopPath), "windows-runner.cjs");
@@ -574,6 +591,9 @@ async function main() {
     const detectedPlans = findPlanCandidates(cwd);
     const codexPrdLocal = path.join(cwd, ".codex", "skills", "prd");
     const codexPrdGlobal = path.join(home, ".codex", "skills", "prd");
+    const codexVersion = commandOutput("codex", ["--version"]);
+    const pythonVersion = commandOutput("python", ["--version"]);
+    const gitBashPythonVersion = spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" });
     const checks = [
       {
         label: "Git Bash (optional helpers)",
@@ -582,18 +602,18 @@ async function main() {
       },
       {
         label: "Codex CLI",
-        ok: spawnSync("codex", ["--version"], { stdio: "ignore" }).status === 0,
-        detail: spawnSync("codex", ["--version"], { encoding: "utf-8" }).stdout?.trim() || "not found",
+        ok: commandExists("codex"),
+        detail: codexVersion.stdout?.trim() || codexVersion.stderr?.trim() || "not found",
       },
       {
         label: "Python (PowerShell)",
-        ok: spawnSync("python", ["--version"], { stdio: "ignore" }).status === 0,
-        detail: spawnSync("python", ["--version"], { encoding: "utf-8" }).stdout?.trim() || spawnSync("python", ["--version"], { encoding: "utf-8" }).stderr?.trim() || "not found",
+        ok: pythonVersion.status === 0,
+        detail: pythonVersion.stdout?.trim() || pythonVersion.stderr?.trim() || "not found",
       },
       {
         label: "Python3 (Git Bash, optional)",
-        ok: spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { stdio: "ignore" }).status === 0,
-        detail: spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" }).stdout?.trim() || spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" }).stderr?.trim() || "not found",
+        ok: gitBashPythonVersion.status === 0,
+        detail: gitBashPythonVersion.stdout?.trim() || gitBashPythonVersion.stderr?.trim() || "not found",
       },
       {
         label: "Bundled templates",
@@ -767,8 +787,7 @@ async function main() {
       process.exit(1);
     }
     const agentBin = agentCmd.split(" ")[0];
-    const existsResult = spawnSync(`command -v ${agentBin}`, { shell: true, stdio: "ignore" });
-    if (existsResult.status !== 0) {
+    if (!commandExists(agentBin)) {
       console.error(`Agent command not found: ${agentBin}`);
       process.exit(1);
     }
