@@ -536,7 +536,7 @@ async function runInstallSkills() {
             ? path.join(home, ".local", "share", "opencode", "skills")
             : path.join(cwd, ".opencode", "skills");
 
-  const skillsToInstall = ["commit", "dev-browser", "prd"];
+  const skillsToInstall = ["commit", "dev-browser", "prd", "prdtest01", "prdtest02", "prdtest03", "prdtest04", "prdtest05"];
   fs.mkdirSync(targetRoot, { recursive: true });
   const installed = [];
   const skipped = [];

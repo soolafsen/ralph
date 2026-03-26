@@ -95,6 +95,31 @@ The main skills are:
 - `prd`
 - `commit`
 - `dev-browser`
+- `prdtest01`
+- `prdtest02`
+- `prdtest03`
+- `prdtest04`
+- `prdtest05`
+
+The `prdtestNN` skills are fixed benchmark PRD generators. They let you recreate recognizable test PRDs on demand instead of keeping old PRD JSON files around.
+
+Examples:
+
+```bash
+ralph prd "Use $prdtest01"
+ralph prd "Use $prdtest02"
+ralph prd "Use $prdtest03"
+ralph prd "Use $prdtest04"
+ralph prd "Use $prdtest05"
+```
+
+Benchmark meanings:
+
+- `prdtest01`: small React frontend benchmark
+- `prdtest02`: small Python CLI benchmark
+- `prdtest03`: small C# in-memory CRUD benchmark
+- `prdtest04`: intentionally cheap Node CLI benchmark for token and overhead checks
+- `prdtest05`: lightweight Node API benchmark for startup, run-instruction, and process-lifecycle checks
 
 For local app verification during Ralph build runs, the bundled Ralph browser helper is now preferred over the persistent `dev-browser` relay server. The main path is a single `serve-and-run` helper call that starts the dev server, runs the headless Playwright check, and then tears the server down. The relay skill remains useful for remote or session-dependent websites.
 
