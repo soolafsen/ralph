@@ -41,14 +41,7 @@ If the story block is empty, stop and report that the PRD story could not be par
 - Infer startup instructions from the repo itself. Use signals such as `package.json` scripts, `pyproject.toml`, `requirements.txt`, `Cargo.toml`, `go.mod`, `Makefile`, or other obvious project entrypoints. Do not wait for the plan or user request to mention docs.
 - For frontend or UI verification, prefer headless browser checks when Browser Verification Visibility is `headless`. Open a visible browser window only when Browser Verification Visibility is `show`.
 - Browser Verification Visibility changes visibility only. It does not remove the requirement to verify frontend or UI changes in a browser.
-- If the repo has a runnable workflow, end your final response with a compact machine-readable block in this exact format:
-
-```text
-<run_instructions>
-<one command or next step per line>
-</run_instructions>
-```
-
+- If the repo has a runnable workflow, end your final response with a compact machine-readable `run_instructions` block containing one command or next step per line.
 - Keep that block concise and shell-neutral. Include exact files or URLs to open where relevant. Omit the block only if there is genuinely no runnable workflow to describe yet.
 
 ## Execution

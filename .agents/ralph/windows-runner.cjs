@@ -496,8 +496,14 @@ function writeRunMeta(metaPath, payload) {
 function extractRunInstructions(logFile) {
   if (!exists(logFile)) return "";
   const text = fs.readFileSync(logFile, "utf-8");
-  const match = text.match(/<run_instructions>\r?\n([\s\S]*?)\r?\n<\/run_instructions>/);
-  return match ? match[1].trim() : "";
+  const matches = Array.from(text.matchAll(/<run_instructions>\r?\n([\s\S]*?)\r?\n<\/run_instructions>/g));
+  for (let i = matches.length - 1; i >= 0; i -= 1) {
+    const candidate = matches[i][1].trim();
+    if (!candidate) continue;
+    if (candidate === "<one command or next step per line>") continue;
+    return candidate;
+  }
+  return "";
 }
 
 function printRunInstructions(logFile) {

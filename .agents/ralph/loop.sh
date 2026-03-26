@@ -299,9 +299,27 @@ extract_run_instructions() {
     return 0
   fi
   awk '
-    /<run_instructions>/ { capture=1; next }
-    /<\/run_instructions>/ { capture=0; exit }
-    capture { print }
+    /<run_instructions>/ {
+      capture=1
+      block=""
+      next
+    }
+    /<\/run_instructions>/ {
+      capture=0
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", block)
+      if (block != "" && block != "<one command or next step per line>") {
+        last=block
+      }
+      next
+    }
+    capture {
+      block = block $0 "\n"
+    }
+    END {
+      if (last != "") {
+        printf "%s", last
+      }
+    }
   ' "$log_file"
 }
 
