@@ -244,10 +244,12 @@ That makes quiet mode a better liveness signal without pretending stalled output
 
 If you interrupt a suspected hang:
 
-- Ralph marks the story `done` if the run log already contains `<promise>COMPLETE</promise>`
-- otherwise Ralph resets the story to `open`
+- Ralph offers a small interrupt menu
+- if the run log already contains `<promise>COMPLETE</promise>`, the default action is to mark the story `done` and continue
+- otherwise the default action is to reset the story to `open` and retry automatically
+- you can also choose to kill and exit without continuing the run
 
-That allows a cleaner restart without waiting for stale-story recovery.
+That allows a cleaner recovery without retyping the Ralph command.
 
 ## Browser Visibility
 

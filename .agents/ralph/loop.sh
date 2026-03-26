@@ -249,7 +249,7 @@ run_quiet_with_heartbeat() {
             printf "%s" "$label"
             : > "$printed_file"
           fi
-          printf " [warning: completion marker seen; still running after %ss. Press Ctrl+C to stop and restart safely.]" "$complete_grace_seconds"
+          printf " [warning: completion marker seen; still running after %ss. Press Ctrl+C for done/retry/kill options.]" "$complete_grace_seconds"
           complete_warned="true"
         fi
 
@@ -258,7 +258,7 @@ run_quiet_with_heartbeat() {
             printf "%s" "$label"
             : > "$printed_file"
           fi
-          printf " [warning: no new log output for %ss. If this looks stuck, press Ctrl+C to stop and restart. If it repeats on the same story, split the plan into smaller stories.]" "$hang_warning_seconds"
+          printf " [warning: no new log output for %ss. Press Ctrl+C for retry/kill options. If it repeats on the same story, split the plan into smaller stories.]" "$hang_warning_seconds"
           hang_warned="true"
         fi
 
@@ -314,6 +314,53 @@ print_run_instructions() {
   fi
   echo "Run Instructions:"
   printf "%s\n" "$instructions"
+}
+
+has_completion_marker() {
+  local log_file="$1"
+  [ -f "$log_file" ] && grep -q "<promise>COMPLETE</promise>" "$log_file"
+}
+
+prompt_interrupt_action() {
+  local story_id="$1"
+  local complete_present="$2"
+  local default_action="retry"
+  local choice=""
+  local tty_path="/dev/tty"
+
+  if [ "$complete_present" = "true" ]; then
+    default_action="next"
+  fi
+
+  if [ -r "$tty_path" ] && [ -w "$tty_path" ]; then
+    printf "\n" > "$tty_path"
+    if [ "$complete_present" = "true" ]; then
+      printf "Interrupted while '%s' already shows a completion marker.\n" "$story_id" > "$tty_path"
+      printf "Choose: [Enter/n] mark done and continue, [r] reset and retry, [k] kill and exit\n" > "$tty_path"
+      printf "Choice [n]: " > "$tty_path"
+    else
+      printf "Interrupted while '%s' has no completion marker yet.\n" "$story_id" > "$tty_path"
+      printf "Choose: [Enter/r] reset and retry, [k] kill and exit\n" > "$tty_path"
+      printf "Choice [r]: " > "$tty_path"
+    fi
+    IFS= read -r choice < "$tty_path" || choice=""
+  fi
+
+  choice="$(printf '%s' "$choice" | tr '[:upper:]' '[:lower:]')"
+  case "$choice" in
+    ""|n|next|d|done)
+      echo "$default_action"
+      ;;
+    r|retry)
+      echo "retry"
+      ;;
+    k|kill|q|quit|x|exit)
+      echo "kill"
+      ;;
+    *)
+      echo "$default_action"
+      ;;
+  esac
 }
 
 MODE="build"
@@ -1155,35 +1202,16 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     CMD_STATUS=$?
   fi
   set -e
-  if [ "$CMD_STATUS" -eq 130 ] || [ "$CMD_STATUS" -eq 143 ]; then
-    if [ "$MODE" = "build" ] && [ -n "${STORY_ID:-}" ]; then
-      if [ -f "$LOG_FILE" ] && grep -q "<promise>COMPLETE</promise>" "$LOG_FILE"; then
-        update_story_status "$STORY_ID" "done"
-        log_error "ITERATION $i interrupted after completion marker; story marked done for restart safety"
-        if [ "$QUIET_MODE" = "1" ]; then
-          quiet_echo "Build: interrupted after completion marker; marked $STORY_ID done"
-        else
-          echo "Interrupted after completion marker; story marked done."
-        fi
-      else
-        update_story_status "$STORY_ID" "open"
-        log_error "ITERATION $i interrupted before completion marker; story reset to open for restart"
-        if [ "$QUIET_MODE" = "1" ]; then
-          quiet_echo "Build: interrupted before completion marker; reset $STORY_ID to open"
-        else
-          echo "Interrupted before completion marker; story reset to open."
-        fi
-      fi
-    fi
-    echo "Interrupted."
-    exit "$CMD_STATUS"
-  fi
   ITER_END=$(date +%s)
   ITER_END_FMT=$(date '+%Y-%m-%d %H:%M:%S')
   ITER_DURATION=$((ITER_END - ITER_START))
   HEAD_AFTER="$(git_head)"
   log_activity "ITERATION $i end (duration=${ITER_DURATION}s)"
-  if [ "$CMD_STATUS" -ne 0 ]; then
+  INTERRUPTED="false"
+  if [ "$CMD_STATUS" -eq 130 ] || [ "$CMD_STATUS" -eq 143 ]; then
+    INTERRUPTED="true"
+  fi
+  if [ "$CMD_STATUS" -ne 0 ] && [ "$INTERRUPTED" != "true" ]; then
     log_error "ITERATION $i command failed (status=$CMD_STATUS)"
     HAS_ERROR="true"
   fi
@@ -1191,10 +1219,12 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   CHANGED_FILES="$(git_changed_files "$HEAD_BEFORE" "$HEAD_AFTER")"
   DIRTY_FILES="$(git_dirty_files)"
   STATUS_LABEL="success"
-  if [ "$CMD_STATUS" -ne 0 ]; then
+  if [ "$INTERRUPTED" = "true" ]; then
+    STATUS_LABEL="interrupted"
+  elif [ "$CMD_STATUS" -ne 0 ]; then
     STATUS_LABEL="error"
   fi
-  if [ "$MODE" = "build" ] && [ "$NO_COMMIT" = "false" ] && [ -n "$DIRTY_FILES" ]; then
+  if [ "$MODE" = "build" ] && [ "$NO_COMMIT" = "false" ] && [ -n "$DIRTY_FILES" ] && [ "$INTERRUPTED" != "true" ]; then
     log_error "ITERATION $i left uncommitted changes; review run summary at $RUN_META"
   fi
   write_run_meta "$RUN_META" "$MODE" "$i" "$RUN_TAG" "${STORY_ID:-}" "${STORY_TITLE:-}" "$ITER_START_FMT" "$ITER_END_FMT" "$ITER_DURATION" "$STATUS_LABEL" "$LOG_FILE" "$HEAD_BEFORE" "$HEAD_AFTER" "$COMMIT_LIST" "$CHANGED_FILES" "$DIRTY_FILES"
@@ -1202,6 +1232,65 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     append_run_summary "$(date '+%Y-%m-%d %H:%M:%S') | run=$RUN_TAG | iter=$i | mode=$MODE | story=$STORY_ID | duration=${ITER_DURATION}s | status=$STATUS_LABEL"
   else
     append_run_summary "$(date '+%Y-%m-%d %H:%M:%S') | run=$RUN_TAG | iter=$i | mode=$MODE | duration=${ITER_DURATION}s | status=$STATUS_LABEL"
+  fi
+
+  if [ "$INTERRUPTED" = "true" ]; then
+    INTERRUPT_ACTION="kill"
+    COMPLETE_PRESENT="false"
+    if [ "$MODE" = "build" ] && [ -n "${STORY_ID:-}" ] && has_completion_marker "$LOG_FILE"; then
+      COMPLETE_PRESENT="true"
+    fi
+    if [ "$MODE" = "build" ] && [ -n "${STORY_ID:-}" ]; then
+      INTERRUPT_ACTION="$(prompt_interrupt_action "$STORY_ID" "$COMPLETE_PRESENT")"
+    fi
+
+    case "$INTERRUPT_ACTION" in
+      next)
+        update_story_status "$STORY_ID" "done"
+        log_error "ITERATION $i interrupted after completion marker; story marked done and continuing"
+        if [ "$QUIET_MODE" = "1" ]; then
+          quiet_echo "Build: interrupted after completion marker; marked $STORY_ID done"
+        else
+          echo "Interrupted after completion marker; story marked done."
+        fi
+        REMAINING="$(remaining_from_prd)"
+        if [ "$QUIET_MODE" = "1" ]; then
+          quiet_echo "Build: remaining stories $REMAINING"
+          quiet_echo "Build: log $LOG_FILE"
+        else
+          echo "Iteration $i complete. Remaining stories: $REMAINING"
+        fi
+        if [ "$REMAINING" = "0" ]; then
+          print_run_instructions "$LOG_FILE"
+          if [ "$QUIET_MODE" = "1" ]; then
+            quiet_echo "Build: complete"
+          else
+            echo "No remaining stories."
+          fi
+          exit 0
+        fi
+        sleep 2
+        continue
+        ;;
+      retry)
+        update_story_status "$STORY_ID" "open"
+        log_error "ITERATION $i interrupted before completion; story reset to open and retrying"
+        if [ "$QUIET_MODE" = "1" ]; then
+          quiet_echo "Build: interrupted; reset $STORY_ID to open for retry"
+        else
+          echo "Interrupted; story reset to open for retry."
+        fi
+        sleep 2
+        continue
+        ;;
+      *)
+        if [ "$QUIET_MODE" = "1" ] && [ "$MODE" = "build" ] && [ -n "${STORY_ID:-}" ]; then
+          quiet_echo "Build: killed during $STORY_ID; story state left unchanged"
+        fi
+        echo "Interrupted."
+        exit "$CMD_STATUS"
+        ;;
+    esac
   fi
 
   if [ "$MODE" = "build" ]; then
