@@ -106,12 +106,14 @@ The `prdtestNN` skills are fixed benchmark PRD generators. They let you recreate
 Examples:
 
 ```bash
-ralph prd "Use $prdtest01"
-ralph prd "Use $prdtest02"
-ralph prd "Use $prdtest03"
-ralph prd "Use $prdtest04"
-ralph prd "Use $prdtest05"
+ralph prd 'Use $prdtest01'
+ralph prd 'Use $prdtest02'
+ralph prd 'Use $prdtest03'
+ralph prd 'Use $prdtest04'
+ralph prd 'Use $prdtest05'
 ```
+
+In PowerShell, use single quotes around skill triggers like `$prdtest01` so PowerShell does not expand them before Ralph sees the literal skill name.
 
 Benchmark meanings:
 
