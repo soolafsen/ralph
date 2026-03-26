@@ -149,6 +149,11 @@ run_agent() {
     escaped=$(printf '%q' "$prompt_file")
     local cmd="${AGENT_CMD//\{prompt\}/$escaped}"
     eval "$cmd"
+  elif [[ "${AGENT_CMD%% *}" == "codex" ]]; then
+    # On Windows/Git Bash, piping prompt text into `codex exec -` can leave the
+    # child process alive after it has emitted the completion marker. Redirecting
+    # stdin from the prompt file avoids that extra pipeline and exits cleanly.
+    eval "$AGENT_CMD" < "$prompt_file"
   else
     cat "$prompt_file" | eval "$AGENT_CMD"
   fi
