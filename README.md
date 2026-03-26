@@ -248,6 +248,7 @@ Quiet mode is intended to show only major stage changes, for example:
 - remaining story count
 - log file path
 - per-step token totals and cumulative token totals when available
+- per-step token breakdown when Codex session data is available: input, cached input, output, and reasoning output
 - end-of-run install or startup commands when Ralph can infer them
 
 The detailed agent output still goes to `.ralph/runs/`.

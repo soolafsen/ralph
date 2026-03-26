@@ -127,6 +127,73 @@ function extractTokensUsed(logFile) {
   return Number(String(matches[matches.length - 1][1] || "").replace(/,/g, "")) || null;
 }
 
+function extractSessionId(logFile) {
+  if (!logFile || !exists(logFile)) return "";
+  const text = fs.readFileSync(logFile, "utf-8");
+  const match = text.match(/^session id:\s*([^\r\n]+)$/mi);
+  return match ? String(match[1] || "").trim() : "";
+}
+
+function findCodexSessionFile(sessionId) {
+  if (!sessionId) return "";
+  const sessionsRoot = path.join(process.env.USERPROFILE || process.env.HOME || "", ".codex", "sessions");
+  if (!exists(sessionsRoot)) return "";
+  const queue = [sessionsRoot];
+  while (queue.length) {
+    const current = queue.shift();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        queue.push(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(`${sessionId}.jsonl`)) {
+        return fullPath;
+      }
+    }
+  }
+  return "";
+}
+
+function extractTokenStats(logFile) {
+  const sessionId = extractSessionId(logFile);
+  const sessionFile = findCodexSessionFile(sessionId);
+  if (sessionFile && exists(sessionFile)) {
+    const lines = fs.readFileSync(sessionFile, "utf-8").split(/\r?\n/);
+    let latest = null;
+    for (const line of lines) {
+      if (!line.includes("\"type\":\"token_count\"") || !line.includes("\"total_token_usage\"")) continue;
+      try {
+        const data = JSON.parse(line);
+        const usage = data?.payload?.info?.total_token_usage;
+        if (!usage) continue;
+        const inputTokens = Number(usage.input_tokens || 0);
+        const cachedInputTokens = Number(usage.cached_input_tokens || 0);
+        const outputTokens = Number(usage.output_tokens || 0);
+        const reasoningOutputTokens = Number(usage.reasoning_output_tokens || 0);
+        const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+        latest = {
+          inputTokens,
+          cachedInputTokens,
+          uncachedInputTokens,
+          outputTokens,
+          reasoningOutputTokens,
+          totalTokens: uncachedInputTokens + outputTokens,
+        };
+      } catch {}
+    }
+    if (latest) return latest;
+  }
+  const totalTokens = extractTokensUsed(logFile);
+  return totalTokens == null ? null : { totalTokens };
+}
+
 function summarizeRun(projectDir, runId) {
   const runsDir = path.join(projectDir, ".ralph", "runs");
   if (!exists(runsDir)) {
@@ -141,8 +208,26 @@ function summarizeRun(projectDir, runId) {
     throw new Error(`No iterations found for run ${resolvedRunId}.`);
   }
   const prdLog = findNearestPrdLog(runsDir, resolvedRunId);
-  const prdTokens = extractTokensUsed(prdLog);
-  const buildTokens = iterations.reduce((sum, item) => sum + (item.tokens || extractTokensUsed(item.logFile) || 0), 0);
+  const prdTokenStats = extractTokenStats(prdLog);
+  const prdTokens = prdTokenStats?.totalTokens ?? extractTokensUsed(prdLog);
+  const buildTokenStats = iterations.reduce((acc, item) => {
+    const stats = item.metrics?.tokenStats || extractTokenStats(item.logFile) || {};
+    acc.totalTokens += Number(stats.totalTokens || item.tokens || 0);
+    acc.inputTokens += Number(stats.inputTokens || 0);
+    acc.cachedInputTokens += Number(stats.cachedInputTokens || 0);
+    acc.uncachedInputTokens += Number(stats.uncachedInputTokens || 0);
+    acc.outputTokens += Number(stats.outputTokens || 0);
+    acc.reasoningOutputTokens += Number(stats.reasoningOutputTokens || 0);
+    return acc;
+  }, {
+    totalTokens: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    uncachedInputTokens: 0,
+    outputTokens: 0,
+    reasoningOutputTokens: 0,
+  });
+  const buildTokens = buildTokenStats.totalTokens;
   const buildSeconds = iterations.reduce((sum, item) => sum + item.durationSeconds, 0);
   const withMetrics = iterations.filter((item) => item.metrics);
   const metricTotals = withMetrics.reduce((acc, item) => {
@@ -169,11 +254,13 @@ function summarizeRun(projectDir, runId) {
     projectDir,
     runId: resolvedRunId,
     prdLog,
+    prdTokenStats,
     prdTokens,
     build: {
       iterations: iterations.length,
       totalSeconds: buildSeconds,
       totalTokens: buildTokens,
+      tokenStats: buildTokenStats,
       started: iterations[0].started,
       ended: iterations[iterations.length - 1].ended,
     },
@@ -196,8 +283,14 @@ function printSummary(summary) {
   console.log(`Iterations: ${summary.build.iterations}`);
   console.log(`Build Time: ${formatDuration(summary.build.totalSeconds)}`);
   console.log(`Build Tokens: ${formatCount(summary.build.totalTokens)}`);
+  if (summary.build.tokenStats.inputTokens) {
+    console.log(`Build Token Detail: input ${formatCount(summary.build.tokenStats.inputTokens)} | cached ${formatCount(summary.build.tokenStats.cachedInputTokens)} | output ${formatCount(summary.build.tokenStats.outputTokens)} | reasoning ${formatCount(summary.build.tokenStats.reasoningOutputTokens)}`);
+  }
   if (summary.prdTokens != null) {
     console.log(`PRD Tokens: ${formatCount(summary.prdTokens)}`);
+    if (summary.prdTokenStats?.inputTokens) {
+      console.log(`PRD Token Detail: input ${formatCount(summary.prdTokenStats.inputTokens)} | cached ${formatCount(summary.prdTokenStats.cachedInputTokens)} | output ${formatCount(summary.prdTokenStats.outputTokens)} | reasoning ${formatCount(summary.prdTokenStats.reasoningOutputTokens)}`);
+    }
     console.log(`Total Tokens: ${formatCount(summary.totals.totalTokens)}`);
   }
   if (summary.metrics.sampledIterations > 0) {
@@ -209,7 +302,11 @@ function printSummary(summary) {
   console.log("Per iteration:");
   for (const item of summary.iterations) {
     const tokenText = item.tokens == null ? "unknown" : formatCount(item.tokens);
-    console.log(`- ${item.iteration}. ${item.storyId} | ${formatDuration(item.durationSeconds)} | ${tokenText} tokens | ${item.status}`);
+    const tokenStats = item.metrics?.tokenStats || null;
+    const detail = tokenStats?.inputTokens
+      ? ` | input ${formatCount(tokenStats.inputTokens)} | cached ${formatCount(tokenStats.cachedInputTokens)} | output ${formatCount(tokenStats.outputTokens)}`
+      : "";
+    console.log(`- ${item.iteration}. ${item.storyId} | ${formatDuration(item.durationSeconds)} | ${tokenText} tokens | ${item.status}${detail}`);
   }
 }
 

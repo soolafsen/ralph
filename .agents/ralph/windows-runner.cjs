@@ -130,6 +130,16 @@ function formatCount(value) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+function formatTokenBreakdown(stats) {
+  if (!stats) return "";
+  const parts = [];
+  if (stats.inputTokens != null) parts.push(`input ${formatCount(stats.inputTokens)}`);
+  if (stats.cachedInputTokens != null) parts.push(`cached ${formatCount(stats.cachedInputTokens)}`);
+  if (stats.outputTokens != null) parts.push(`output ${formatCount(stats.outputTokens)}`);
+  if (stats.reasoningOutputTokens != null) parts.push(`reasoning ${formatCount(stats.reasoningOutputTokens)}`);
+  return parts.join(" | ");
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -577,6 +587,17 @@ function writeRunMeta(metaPath, payload) {
     `- Status: ${payload.status}`,
     `- Log: ${payload.logFile}`,
     "",
+  );
+  if (payload.tokenStats) {
+    lines.push("## Tokens", `- Total: ${formatCount(payload.tokenStats.totalTokens)}`);
+    if (payload.tokenStats.inputTokens != null) lines.push(`- Input: ${formatCount(payload.tokenStats.inputTokens)}`);
+    if (payload.tokenStats.cachedInputTokens != null) lines.push(`- Cached Input: ${formatCount(payload.tokenStats.cachedInputTokens)}`);
+    if (payload.tokenStats.uncachedInputTokens != null) lines.push(`- Uncached Input: ${formatCount(payload.tokenStats.uncachedInputTokens)}`);
+    if (payload.tokenStats.outputTokens != null) lines.push(`- Output: ${formatCount(payload.tokenStats.outputTokens)}`);
+    if (payload.tokenStats.reasoningOutputTokens != null) lines.push(`- Reasoning Output: ${formatCount(payload.tokenStats.reasoningOutputTokens)}`);
+    lines.push("");
+  }
+  lines.push(
     "## Git",
     `- Head (before): ${payload.headBefore || "unknown"}`,
     `- Head (after): ${payload.headAfter || "unknown"}`,
@@ -701,6 +722,99 @@ function extractTokensUsed(logFile) {
   const raw = String(matches[matches.length - 1][1] || "").replace(/,/g, "");
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+function extractSessionId(logFile) {
+  if (!exists(logFile)) return "";
+  const text = fs.readFileSync(logFile, "utf-8");
+  const match = text.match(/^session id:\s*([^\r\n]+)$/mi);
+  return match ? String(match[1] || "").trim() : "";
+}
+
+const codexSessionFileCache = new Map();
+
+function findCodexSessionFile(sessionId) {
+  if (!sessionId) return "";
+  if (codexSessionFileCache.has(sessionId)) {
+    return codexSessionFileCache.get(sessionId);
+  }
+  const sessionsRoot = path.join(os.homedir(), ".codex", "sessions");
+  if (!exists(sessionsRoot)) {
+    codexSessionFileCache.set(sessionId, "");
+    return "";
+  }
+  const queue = [sessionsRoot];
+  while (queue.length) {
+    const current = queue.shift();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        queue.push(fullPath);
+        continue;
+      }
+      if (entry.isFile() && entry.name.endsWith(`${sessionId}.jsonl`)) {
+        codexSessionFileCache.set(sessionId, fullPath);
+        return fullPath;
+      }
+    }
+  }
+  codexSessionFileCache.set(sessionId, "");
+  return "";
+}
+
+function extractTokenStatsFromSession(sessionFile) {
+  if (!sessionFile || !exists(sessionFile)) return null;
+  const lines = fs.readFileSync(sessionFile, "utf-8").split(/\r?\n/);
+  let latest = null;
+  for (const line of lines) {
+    if (!line.includes("\"type\":\"token_count\"") || !line.includes("\"total_token_usage\"")) continue;
+    try {
+      const data = JSON.parse(line);
+      const usage = data?.payload?.info?.total_token_usage;
+      if (!usage) continue;
+      const inputTokens = Number(usage.input_tokens || 0);
+      const cachedInputTokens = Number(usage.cached_input_tokens || 0);
+      const outputTokens = Number(usage.output_tokens || 0);
+      const reasoningOutputTokens = Number(usage.reasoning_output_tokens || 0);
+      const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+      latest = {
+        inputTokens,
+        cachedInputTokens,
+        uncachedInputTokens,
+        outputTokens,
+        reasoningOutputTokens,
+        totalTokens: uncachedInputTokens + outputTokens,
+        rawTotalTokens: Number(usage.total_tokens || 0),
+      };
+    } catch {}
+  }
+  return latest;
+}
+
+function extractTokenStats(logFile) {
+  const sessionId = extractSessionId(logFile);
+  const sessionFile = findCodexSessionFile(sessionId);
+  const detailed = extractTokenStatsFromSession(sessionFile);
+  if (detailed) {
+    return detailed;
+  }
+  const totalTokens = extractTokensUsed(logFile);
+  if (totalTokens == null) return null;
+  return {
+    inputTokens: null,
+    cachedInputTokens: null,
+    uncachedInputTokens: null,
+    outputTokens: null,
+    reasoningOutputTokens: null,
+    totalTokens,
+    rawTotalTokens: totalTokens,
+  };
 }
 
 function readLogTail(logFile, maxBytes = completeMarkerTailBytes) {
@@ -966,11 +1080,15 @@ async function runPrd() {
 
   if (quietMode) quietEcho("PRD: starting");
   const result = await runAgentCommand(prdAgentCommand, prdPromptFile, prdLogFile, "PRD: working");
-  const prdTokens = extractTokensUsed(prdLogFile);
+  const prdTokenStats = extractTokenStats(prdLogFile);
   if (quietMode) {
     quietEcho(result.status === 0 ? `PRD: complete (full log: ${prdLogFile})` : `PRD: failed (full log: ${prdLogFile})`);
-    if (prdTokens != null) {
-      quietEcho(`PRD: tokens ${formatCount(prdTokens)} (total ${formatCount(prdTokens)})`);
+    if (prdTokenStats) {
+      quietEcho(`PRD: tokens ${formatCount(prdTokenStats.totalTokens)} (total ${formatCount(prdTokenStats.totalTokens)})`);
+      const breakdown = formatTokenBreakdown(prdTokenStats);
+      if (breakdown) {
+        quietEcho(`PRD: token detail ${breakdown}`);
+      }
     }
   }
   process.exit(result.status);
@@ -993,7 +1111,14 @@ async function runBuild() {
     requireAgent(agentCommand);
   }
   initializeFiles();
-  let cumulativeTokens = 0;
+  let cumulativeTokenStats = {
+    totalTokens: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    uncachedInputTokens: 0,
+    outputTokens: 0,
+    reasoningOutputTokens: 0,
+  };
 
   if (quietMode) {
     quietEcho("Build: start");
@@ -1083,9 +1208,17 @@ async function runBuild() {
     const commitList = gitCommitList(headBefore, headAfter);
     const changedFiles = gitChangedFiles(headBefore, headAfter);
     const dirtyFiles = gitDirtyFiles();
-    const tokensUsed = extractTokensUsed(logFile);
-    if (tokensUsed != null) {
-      cumulativeTokens += tokensUsed;
+    const tokenStats = extractTokenStats(logFile);
+    const tokensUsed = tokenStats ? tokenStats.totalTokens : null;
+    if (tokenStats) {
+      cumulativeTokenStats = {
+        totalTokens: cumulativeTokenStats.totalTokens + tokenStats.totalTokens,
+        inputTokens: cumulativeTokenStats.inputTokens + Number(tokenStats.inputTokens || 0),
+        cachedInputTokens: cumulativeTokenStats.cachedInputTokens + Number(tokenStats.cachedInputTokens || 0),
+        uncachedInputTokens: cumulativeTokenStats.uncachedInputTokens + Number(tokenStats.uncachedInputTokens || 0),
+        outputTokens: cumulativeTokenStats.outputTokens + Number(tokenStats.outputTokens || 0),
+        reasoningOutputTokens: cumulativeTokenStats.reasoningOutputTokens + Number(tokenStats.reasoningOutputTokens || 0),
+      };
     }
     const logBytes = exists(logFile) ? fs.statSync(logFile).size : 0;
     const statusLabel = interrupted ? "interrupted" : result.status !== 0 ? "error" : "success";
@@ -1105,6 +1238,7 @@ async function runBuild() {
       ended: iterEndFmt,
       duration: iterDuration,
       tokens: tokensUsed,
+      tokenStats,
       status: statusLabel,
       logFile,
       headBefore,
@@ -1140,6 +1274,7 @@ async function runBuild() {
       storyId,
       storyTitle,
       tokensUsed,
+      tokenStats,
       status: statusLabel,
       prompt: {
         bytes: promptMetrics.bytes,
@@ -1217,8 +1352,12 @@ async function runBuild() {
     if (quietMode) {
       quietEcho(`Build: remaining stories ${remainingAfter}`);
       quietEcho(`Build: log ${logFile}`);
-      if (tokensUsed != null) {
-        quietEcho(`Build: tokens ${formatCount(tokensUsed)} (total ${formatCount(cumulativeTokens)})`);
+      if (tokenStats) {
+        quietEcho(`Build: tokens ${formatCount(tokenStats.totalTokens)} (total ${formatCount(cumulativeTokenStats.totalTokens)})`);
+        const breakdown = formatTokenBreakdown(tokenStats);
+        if (breakdown) {
+          quietEcho(`Build: token detail ${breakdown}`);
+        }
       }
     } else {
       console.log(`Iteration ${iteration} complete. Remaining stories: ${remainingAfter}`);
