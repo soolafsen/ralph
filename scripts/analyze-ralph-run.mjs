@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 function usage() {
   console.log(`Usage: node scripts/analyze-ralph-run.mjs [project-dir] [--run <run-id>] [--json]`);
 }
 
-function exists(target) {
+export function exists(target) {
   try {
     fs.accessSync(target);
     return true;
@@ -14,11 +15,11 @@ function exists(target) {
   }
 }
 
-function formatCount(value) {
+export function formatCount(value) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
-function formatDuration(totalSeconds) {
+export function formatDuration(totalSeconds) {
   const value = Number(totalSeconds) || 0;
   const hours = Math.floor(value / 3600);
   const minutes = Math.floor((value % 3600) / 60);
@@ -56,7 +57,7 @@ function parseArgs(argv) {
   return { projectDir, runId, json };
 }
 
-function parseSummaryMarkdown(filePath) {
+export function parseSummaryMarkdown(filePath) {
   const text = fs.readFileSync(filePath, "utf-8");
   const getField = (label) => {
     const match = text.match(new RegExp(`^- ${label}:\\s*(.+)$`, "m"));
@@ -79,7 +80,7 @@ function parseSummaryMarkdown(filePath) {
   };
 }
 
-function findLatestBuildRun(runsDir) {
+export function findLatestBuildRun(runsDir) {
   const summaries = fs.readdirSync(runsDir)
     .filter((name) => /^run-.+-iter-\d+\.md$/.test(name))
     .map((name) => path.join(runsDir, name))
@@ -97,7 +98,7 @@ function findLatestBuildRun(runsDir) {
   return values[0]?.data.runId || "";
 }
 
-function loadRunIterations(runsDir, runId) {
+export function loadRunIterations(runsDir, runId) {
   return fs.readdirSync(runsDir)
     .filter((name) => name.startsWith(`run-${runId}-iter-`) && name.endsWith(".md"))
     .map((name) => {
@@ -110,7 +111,7 @@ function loadRunIterations(runsDir, runId) {
     .sort((a, b) => a.iteration - b.iteration);
 }
 
-function findNearestPrdLog(runsDir, runId) {
+export function findNearestPrdLog(runsDir, runId) {
   const buildPrefix = runId.split("-").slice(0, 2).join("-");
   const candidates = fs.readdirSync(runsDir)
     .filter((name) => name.startsWith("prd-") && name.endsWith(".log"))
@@ -119,7 +120,7 @@ function findNearestPrdLog(runsDir, runId) {
   return candidates.length ? path.join(runsDir, candidates[candidates.length - 1]) : "";
 }
 
-function extractTokensUsed(logFile) {
+export function extractTokensUsed(logFile) {
   if (!logFile || !exists(logFile)) return null;
   const text = fs.readFileSync(logFile, "utf-8");
   const matches = Array.from(text.matchAll(/tokens used\s*\r?\n([\d,]+)/gi));
@@ -127,14 +128,14 @@ function extractTokensUsed(logFile) {
   return Number(String(matches[matches.length - 1][1] || "").replace(/,/g, "")) || null;
 }
 
-function extractSessionId(logFile) {
+export function extractSessionId(logFile) {
   if (!logFile || !exists(logFile)) return "";
   const text = fs.readFileSync(logFile, "utf-8");
   const match = text.match(/^session id:\s*([^\r\n]+)$/mi);
   return match ? String(match[1] || "").trim() : "";
 }
 
-function findCodexSessionFile(sessionId) {
+export function findCodexSessionFile(sessionId) {
   if (!sessionId) return "";
   const sessionsRoot = path.join(process.env.USERPROFILE || process.env.HOME || "", ".codex", "sessions");
   if (!exists(sessionsRoot)) return "";
@@ -161,7 +162,7 @@ function findCodexSessionFile(sessionId) {
   return "";
 }
 
-function extractTokenStats(logFile) {
+export function extractTokenStats(logFile) {
   const sessionId = extractSessionId(logFile);
   const sessionFile = findCodexSessionFile(sessionId);
   if (sessionFile && exists(sessionFile)) {
@@ -194,7 +195,7 @@ function extractTokenStats(logFile) {
   return totalTokens == null ? null : { totalTokens };
 }
 
-function summarizeRun(projectDir, runId) {
+export function summarizeRun(projectDir, runId) {
   const runsDir = path.join(projectDir, ".ralph", "runs");
   if (!exists(runsDir)) {
     throw new Error(`Runs directory not found: ${runsDir}`);
@@ -276,7 +277,7 @@ function summarizeRun(projectDir, runId) {
   };
 }
 
-function printSummary(summary) {
+export function printSummary(summary) {
   console.log(`Project: ${summary.projectDir}`);
   console.log(`Run ID: ${summary.runId}`);
   console.log(`Build: ${summary.build.started} -> ${summary.build.ended}`);
@@ -310,15 +311,19 @@ function printSummary(summary) {
   }
 }
 
-try {
-  const { projectDir, runId, json } = parseArgs(process.argv);
-  const summary = summarizeRun(projectDir, runId);
-  if (json) {
-    console.log(JSON.stringify(summary, null, 2));
-  } else {
-    printSummary(summary);
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
+  try {
+    const { projectDir, runId, json } = parseArgs(process.argv);
+    const summary = summarizeRun(projectDir, runId);
+    if (json) {
+      console.log(JSON.stringify(summary, null, 2));
+    } else {
+      printSummary(summary);
+    }
+  } catch (error) {
+    console.error(error && error.message ? error.message : String(error));
+    process.exit(1);
   }
-} catch (error) {
-  console.error(error && error.message ? error.message : String(error));
-  process.exit(1);
 }

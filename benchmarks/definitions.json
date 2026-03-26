@@ -1,0 +1,39 @@
+{
+  "benchmarks": [
+    {
+      "id": "prdtest01",
+      "name": "PRDTEST01 React Styled Hello",
+      "skill": "prdtest01",
+      "expectedPrdFilename": "prdtest01-react-styled-hello.json",
+      "notes": "Small React frontend benchmark"
+    },
+    {
+      "id": "prdtest02",
+      "name": "PRDTEST02 Python 99 Primes",
+      "skill": "prdtest02",
+      "expectedPrdFilename": "prdtest02-python-99-primes.json",
+      "notes": "Small Python CLI benchmark"
+    },
+    {
+      "id": "prdtest03",
+      "name": "PRDTEST03 CSharp InMemory DB",
+      "skill": "prdtest03",
+      "expectedPrdFilename": "prdtest03-csharp-inmemory-db.json",
+      "notes": "Small .NET in-memory CRUD benchmark"
+    },
+    {
+      "id": "prdtest04",
+      "name": "PRDTEST04 Node Tiny CLI",
+      "skill": "prdtest04",
+      "expectedPrdFilename": "prdtest04-node-tiny-cli.json",
+      "notes": "Low-token overhead benchmark"
+    },
+    {
+      "id": "prdtest05",
+      "name": "PRDTEST05 Node Tiny API",
+      "skill": "prdtest05",
+      "expectedPrdFilename": "prdtest05-node-tiny-api.json",
+      "notes": "Server/process lifecycle benchmark"
+    }
+  ]
+}
