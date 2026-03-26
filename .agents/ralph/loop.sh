@@ -180,6 +180,37 @@ quiet_echo() {
   fi
 }
 
+run_quiet_with_heartbeat() {
+  local label="$1"
+  local log_file="$2"
+  shift 2
+  local interval="${RALPH_QUIET_HEARTBEAT_SECONDS:-5}"
+  local printed="false"
+
+  "$@" >"$log_file" 2>&1 &
+  local cmd_pid=$!
+
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    sleep "$interval"
+    if kill -0 "$cmd_pid" 2>/dev/null; then
+      if [ "$printed" = "false" ]; then
+        printf "%s" "$label"
+        printed="true"
+      fi
+      printf "."
+    fi
+  done
+
+  wait "$cmd_pid"
+  local status=$?
+
+  if [ "$printed" = "true" ]; then
+    printf "\n"
+  fi
+
+  return "$status"
+}
+
 MODE="build"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -283,7 +314,7 @@ if [ "$MODE" = "prd" ]; then
   if [ "$PRD_USE_INLINE" -eq 1 ]; then
     if [ "$QUIET_MODE" = "1" ]; then
       set +e
-      run_agent_inline "$PRD_PROMPT_FILE" >"$PRD_LOG_FILE" 2>&1
+      run_quiet_with_heartbeat "PRD: working" "$PRD_LOG_FILE" run_agent_inline "$PRD_PROMPT_FILE"
       CMD_STATUS=$?
       set -e
     else
@@ -293,7 +324,7 @@ if [ "$MODE" = "prd" ]; then
   else
     if [ "$QUIET_MODE" = "1" ]; then
       set +e
-      run_agent "$PRD_PROMPT_FILE" >"$PRD_LOG_FILE" 2>&1
+      run_quiet_with_heartbeat "PRD: working" "$PRD_LOG_FILE" run_agent "$PRD_PROMPT_FILE"
       CMD_STATUS=$?
       set -e
     else
@@ -1010,7 +1041,7 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
     CMD_STATUS=0
   else
     if [ "$QUIET_MODE" = "1" ]; then
-      run_agent "$PROMPT_RENDERED" >"$LOG_FILE" 2>&1
+      run_quiet_with_heartbeat "Build: working" "$LOG_FILE" run_agent "$PROMPT_RENDERED"
     else
       run_agent "$PROMPT_RENDERED" 2>&1 | tee "$LOG_FILE"
     fi
