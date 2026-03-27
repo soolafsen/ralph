@@ -1,5 +1,10 @@
 # Ideas To Steal From OpenSpace
 
+Note:
+
+- this source-specific note is now superseded by `docs/ralph-improvement-ideas.md` for the consolidated Ralph-facing view
+- keep this file as source analysis detail
+
 This note captures the parts of [HKUDS/OpenSpace](https://github.com/HKUDS/OpenSpace) that look useful for Ralph, without assuming Ralph should adopt OpenSpace as a framework.
 
 The goal is to preserve Ralph's current strengths:
