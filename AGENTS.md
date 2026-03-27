@@ -7,6 +7,9 @@ Keep this file short. It is always loaded into context.
 - Tests (dry-run): `npm test`
 - Fast real agent check: `npm run test:ping`
 - Full real loop: `npm run test:real`
+- Benchmark shorthands:
+- If the user says `bench:quick`, run `ralph bench:quick`
+- If the user says `bench:deep`, run `ralph bench:deep`
 
 ## CLI shape
 - CLI entry: `bin/ralph`

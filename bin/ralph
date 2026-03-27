@@ -85,6 +85,8 @@ function usage() {
 Commands:
   install [--skills] [--force] [--force-skills]  Copy .agents/ralph into the current repo
   prd ["<request>"] [--out path]      Generate a PRD (JSON) via agent
+  bench:quick                         Run the quick Ralph benchmark suite
+  bench:deep                          Run the deep Ralph benchmark suite
   ping                                Minimal agent health check
   doctor                              Check Ralph runner prerequisites
   log "<message>"                     Append to .ralph/activity.log
@@ -738,6 +740,23 @@ async function main() {
       check.label === "Plan candidates in cwd",
     );
     process.exit(ok ? 0 : 1);
+  }
+
+  if (cmd === "bench:quick" || cmd === "bench:deep") {
+    const suiteId = cmd === "bench:quick" ? "quick" : "deep";
+    const suiteRunner = path.join(repoRoot, "scripts", "run-ralph-benchmark-suite.mjs");
+    if (!exists(suiteRunner)) {
+      console.error(`Benchmark suite runner not found: ${suiteRunner}`);
+      process.exit(1);
+    }
+    const result = spawnSync(process.execPath, [suiteRunner, "--suite", suiteId], {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        RALPH_SKIP_UPDATE_CHECK: "1",
+      },
+    });
+    process.exit(result.status ?? 1);
   }
 
   const templateDir = exists(localDir) ? localDir : globalDir;
