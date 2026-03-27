@@ -228,76 +228,101 @@ async function runMockTurn({
   }
 }
 
-export async function runCodexSdkTurn(options) {
-  const {
-    promptPath,
-    logFile,
-    label,
-    quietMode,
-    rootDir,
-    env = process.env,
-    completeMarker,
-    heartbeatSeconds,
-    idleNoticeSeconds,
-    hangWarningSeconds,
-    modelReasoningEffort = "medium",
-    model,
-    onController,
-  } = options;
+function createAbortableDelay(controller, ms, message = "sdk run aborted") {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      controller.signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      controller.signal.removeEventListener("abort", onAbort);
+      const error = new Error(message);
+      error.name = "AbortError";
+      reject(error);
+    };
+    controller.signal.addEventListener("abort", onAbort);
+  });
+}
 
-  const promptText = options.promptText ?? fs.readFileSync(promptPath, "utf-8");
-  ensureDir(path.dirname(logFile));
-  const logStream = fs.createWriteStream(logFile, { flags: "w" });
-  writeLine(logStream, "backend: sdk");
-  writeLine(logStream, `started: ${new Date().toISOString()}`);
-  writeLine(logStream, `prompt path: ${promptPath}`);
-  writeLine(logStream, "");
-  writeLine(logStream, "prompt:");
-  writeLine(logStream, promptText.trimEnd());
-  writeLine(logStream, "");
-  writeLine(logStream, "events:");
+function createMockEvents({ controller, completeMarker, env }) {
+  const mode = env.RALPH_TEST_CODEX_SDK_MOCK || "";
+  const finalResponse = env.RALPH_TEST_CODEX_SDK_FINAL_RESPONSE || `Mock SDK response\n${completeMarker}`;
+  const mockEvents = [
+    { type: "thread.started", thread_id: "mock-thread" },
+    { type: "turn.started" },
+    { type: "item.completed", item: { type: "agent_message", text: finalResponse } },
+    {
+      type: "turn.completed",
+      usage: {
+        input_tokens: 120,
+        cached_input_tokens: 20,
+        output_tokens: 15,
+      },
+    },
+  ];
 
-  const controller = new AbortController();
-  if (typeof onController === "function") {
-    onController(controller);
-  }
+  let closed = false;
+  let pendingResolve = null;
+  let pendingReject = null;
 
-  if (env.RALPH_TEST_CODEX_SDK_MOCK) {
-    try {
-      return await runMockTurn({
-        controller,
-        env,
-        quietMode,
-        label,
-        heartbeatSeconds,
-        idleNoticeSeconds,
-        hangWarningSeconds,
-        completeMarker,
-        logStream,
-        promptText,
-      });
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        writeLine(logStream, `sdk interrupted: ${error.message || "aborted"}`);
-        return {
-          status: 130,
-          interrupted: true,
-          completed: false,
-          completedAndTerminated: false,
-          backend: "sdk",
-          tokenStats: null,
-          finalResponse: "",
-        };
+  return {
+    [Symbol.asyncIterator]() {
+      let index = 0;
+      return {
+        next: async () => {
+          if (closed || controller.signal.aborted) {
+            return { done: true, value: undefined };
+          }
+          if (index < mockEvents.length) {
+            await createAbortableDelay(controller, 25, "mock sdk run aborted");
+            return { done: false, value: mockEvents[index++] };
+          }
+          if (mode === "hang_after_complete") {
+            await new Promise((resolve, reject) => {
+              pendingResolve = resolve;
+              pendingReject = reject;
+            });
+          }
+          return { done: true, value: undefined };
+        },
+        return: async () => {
+          closed = true;
+          if (pendingResolve) {
+            pendingResolve();
+            pendingResolve = null;
+            pendingReject = null;
+          }
+          return { done: true, value: undefined };
+        },
+      };
+    },
+    abort(errorMessage = "mock sdk run aborted") {
+      closed = true;
+      if (pendingReject) {
+        const error = new Error(errorMessage);
+        error.name = "AbortError";
+        pendingReject(error);
+        pendingResolve = null;
+        pendingReject = null;
+      } else if (pendingResolve) {
+        pendingResolve();
+        pendingResolve = null;
+        pendingReject = null;
       }
-      throw error;
-    } finally {
-      if (typeof onController === "function") {
-        onController(null);
-      }
-      await closeLogStream(logStream);
-    }
-  }
+    },
+  };
+}
 
+async function consumeStreamedEvents({
+  events,
+  quietMode,
+  label,
+  heartbeatSeconds,
+  idleNoticeSeconds,
+  hangWarningSeconds,
+  logStream,
+}) {
   let printed = false;
   let lastActivityAt = Date.now();
   let lastIdleNoticeBucket = 0;
@@ -347,21 +372,11 @@ export async function runCodexSdkTurn(options) {
   }, heartbeatSeconds * 1000);
 
   try {
-    const codex = new Codex({ env });
-    const thread = codex.startThread({
-      workingDirectory: rootDir,
-      skipGitRepoCheck: true,
-      approvalPolicy: "never",
-      sandboxMode: "danger-full-access",
-      modelReasoningEffort,
-      ...(model ? { model } : {}),
-    });
-    const { events } = await thread.runStreamed(promptText, { signal: controller.signal });
     for await (const event of events) {
       onActivity();
       writeEvent(logStream, event);
       if (event.type === "thread.started") {
-        threadId = event.thread_id || thread.id || "";
+        threadId = event.thread_id || threadId;
       } else if (event.type === "item.completed") {
         items.push(event.item);
         if (event.item?.type === "agent_message") {
@@ -369,13 +384,129 @@ export async function runCodexSdkTurn(options) {
         }
       } else if (event.type === "turn.completed") {
         usage = event.usage || usage;
+        break;
       } else if (event.type === "turn.failed") {
         throw new Error(event.error?.message || "SDK turn failed");
       } else if (event.type === "error") {
         throw new Error(event.message || "SDK event stream failed");
       }
     }
-    threadId = threadId || thread.id || "";
+  } finally {
+    clearInterval(heartbeat);
+    if (quietMode && printed) {
+      process.stdout.write("\n");
+    }
+  }
+
+  return {
+    threadId,
+    finalResponse,
+    usage,
+    items,
+    seenEvent,
+  };
+}
+
+export async function runCodexSdkTurn(options) {
+  const {
+    promptPath,
+    logFile,
+    label,
+    quietMode,
+    rootDir,
+    env = process.env,
+    completeMarker,
+    heartbeatSeconds,
+    idleNoticeSeconds,
+    hangWarningSeconds,
+    modelReasoningEffort = "medium",
+    model,
+    onController,
+  } = options;
+
+  const promptText = options.promptText ?? fs.readFileSync(promptPath, "utf-8");
+  ensureDir(path.dirname(logFile));
+  const logStream = fs.createWriteStream(logFile, { flags: "w" });
+  writeLine(logStream, "backend: sdk");
+  writeLine(logStream, `started: ${new Date().toISOString()}`);
+  writeLine(logStream, `prompt path: ${promptPath}`);
+  writeLine(logStream, "");
+  writeLine(logStream, "prompt:");
+  writeLine(logStream, promptText.trimEnd());
+  writeLine(logStream, "");
+  writeLine(logStream, "events:");
+
+  const controller = new AbortController();
+  if (typeof onController === "function") {
+    onController(controller);
+  }
+
+  let threadId = "";
+  let finalResponse = "";
+  let usage = null;
+  const items = [];
+  let seenEvent = false;
+
+  try {
+    const mockMode = env.RALPH_TEST_CODEX_SDK_MOCK || "";
+    if (mockMode === "startup_error") {
+      const error = new Error("mock sdk startup failure");
+      error.allowFallback = true;
+      throw error;
+    }
+
+    let events;
+    let fallbackThreadId = "";
+    let mockHandle = null;
+    if (mockMode === "success" || mockMode === "hang_after_complete") {
+      mockHandle = createMockEvents({ controller, completeMarker, env });
+      events = mockHandle;
+      fallbackThreadId = "mock-thread";
+    } else if (mockMode) {
+      return await runMockTurn({
+        controller,
+        env,
+        quietMode,
+        label,
+        heartbeatSeconds,
+        idleNoticeSeconds,
+        hangWarningSeconds,
+        completeMarker,
+        logStream,
+        promptText,
+      });
+    } else {
+      const codex = new Codex({ env });
+      const thread = codex.startThread({
+        workingDirectory: rootDir,
+        skipGitRepoCheck: true,
+        approvalPolicy: "never",
+        sandboxMode: "danger-full-access",
+        modelReasoningEffort,
+        ...(model ? { model } : {}),
+      });
+      const streamedTurn = await thread.runStreamed(promptText, { signal: controller.signal });
+      events = streamedTurn.events;
+      fallbackThreadId = thread.id || "";
+    }
+
+    const consumed = await consumeStreamedEvents({
+      events,
+      quietMode,
+      label,
+      heartbeatSeconds,
+      idleNoticeSeconds,
+      hangWarningSeconds,
+      logStream,
+    });
+    if (mockHandle) {
+      mockHandle.abort("mock sdk run aborted");
+    }
+    threadId = consumed.threadId || fallbackThreadId;
+    finalResponse = consumed.finalResponse;
+    usage = consumed.usage;
+    seenEvent = consumed.seenEvent;
+    items.push(...consumed.items);
   } catch (error) {
     if (error?.name === "AbortError" || controller.signal.aborted) {
       writeLine(logStream, `sdk interrupted: ${error.message || "aborted"}`);
@@ -411,10 +542,6 @@ export async function runCodexSdkTurn(options) {
     await closeLogStream(logStream);
     return payload;
   } finally {
-    clearInterval(heartbeat);
-    if (quietMode && printed) {
-      process.stdout.write("\n");
-    }
     if (typeof onController === "function") {
       onController(null);
     }
