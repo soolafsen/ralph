@@ -140,10 +140,41 @@ function quoteForCmd(arg) {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
+function resolveWindowsCommand(command) {
+  if (path.isAbsolute(command) && exists(command)) {
+    return command;
+  }
+  const result = spawnSync("where", [command], {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
+    windowsHide: true,
+  });
+  if (result.status !== 0) return "";
+  return String(result.stdout || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || "";
+}
+
 function buildSpawnSpec(childCommand, cwd, stdoutPath, stderrPath) {
   const stdoutFd = fs.openSync(stdoutPath, "a");
   const stderrFd = fs.openSync(stderrPath, "a");
   if (process.platform === "win32") {
+    const resolved = resolveWindowsCommand(childCommand[0]);
+    if (resolved) {
+      return {
+        file: resolved,
+        args: childCommand.slice(1),
+        options: {
+          cwd,
+          detached: true,
+          windowsHide: true,
+          shell: false,
+          stdio: ["ignore", stdoutFd, stderrFd],
+          env: process.env,
+        },
+      };
+    }
     const cmdLine = childCommand.map(quoteForCmd).join(" ");
     return {
       file: process.env.ComSpec || "cmd.exe",
