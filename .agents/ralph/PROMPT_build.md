@@ -7,6 +7,8 @@ Complete exactly one PRD story, verify it, log the result, then stop.
 - PRD: {{PRD_PATH}}
 - AGENTS (optional): {{AGENTS_PATH}}
 - Progress Snapshot: {{PROGRESS_CONTEXT_PATH}}
+- Recipes Snapshot: {{RECIPES_CONTEXT_PATH}}
+- Strategy Snapshot: {{STRATEGY_CONTEXT_PATH}}
 - Progress Log: {{PROGRESS_PATH}}
 - Errors Log: {{ERRORS_LOG_PATH}}
 - Run ID: {{RUN_ID}}
@@ -32,6 +34,15 @@ If the story block is empty, stop and report that the story could not be parsed.
 ## Quality Gates
 {{QUALITY_GATES}}
 
+## Known Recipes
+{{RECIPES_BLOCK}}
+
+## Strategy Memory
+{{STRATEGY_BLOCK}}
+
+## Backpressure Hints
+{{BACKPRESSURE_HINTS}}
+
 ## Rules
 - Work only on {{STORY_ID}}.
 - Do not ask the user questions.
@@ -56,7 +67,7 @@ If the story block is empty, stop and report that the story could not be parsed.
 - Only output `<promise>COMPLETE</promise>` after the story is implemented, verified, and logged.
 
 ## Execution
-1. Read the story, quality gates, progress snapshot, and any repo files needed for this story.
+1. Read the story, quality gates, progress snapshot, known recipes, and any repo files needed for this story.
 2. Implement the story fully. No placeholders unless the story explicitly calls for scaffolding.
 3. If the repo lacks clear quick-start commands, add or refresh a short `README.md` before finishing.
 4. Run the final verification set.

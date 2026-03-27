@@ -55,6 +55,9 @@ const errorsLogPath = path.resolve(process.env.ERRORS_LOG_PATH || path.join(root
 const activityLogPath = path.resolve(process.env.ACTIVITY_LOG_PATH || path.join(rootDir, ".ralph", "activity.log"));
 const tmpDir = path.resolve(process.env.TMP_DIR || path.join(rootDir, ".ralph", ".tmp"));
 const runsDir = path.resolve(process.env.RUNS_DIR || path.join(rootDir, ".ralph", "runs"));
+const knowledgeDir = path.resolve(process.env.KNOWLEDGE_DIR || path.join(rootDir, ".ralph", "knowledge"));
+const recipesDir = path.resolve(process.env.RECIPES_DIR || path.join(knowledgeDir, "recipes"));
+const strategyStatsPath = path.resolve(process.env.STRATEGY_STATS_PATH || path.join(knowledgeDir, "strategy-stats.json"));
 const stagedHelperDir = path.join(tmpDir, "ralph-tools");
 const stagedProcessHelperPath = path.join(stagedHelperDir, "process-helper.cjs");
 const stagedBrowserCheckHelperPath = path.join(stagedHelperDir, "browser-check.cjs");
@@ -333,6 +336,490 @@ function summarizeProgressEntry(entryLines) {
   return lines.join("\n");
 }
 
+function parseProgressEntries(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const entries = [];
+  let current = [];
+  for (const line of lines) {
+    if (line.startsWith("## ")) {
+      if (current.length) entries.push(current);
+      current = [line];
+    } else if (current.length) {
+      current.push(line);
+    }
+  }
+  if (current.length) entries.push(current);
+  return entries.map((entryLines) => entryLines.join("\n").trim()).filter(Boolean);
+}
+
+function findProgressEntryForIteration(runId, iteration) {
+  if (!runId || !iteration || !exists(progressPath)) return "";
+  const entries = parseProgressEntries(fs.readFileSync(progressPath, "utf-8"));
+  const marker = `Run: ${runId} (iteration ${iteration})`;
+  for (let i = entries.length - 1; i >= 0; i -= 1) {
+    if (entries[i].includes(marker)) {
+      return entries[i];
+    }
+  }
+  return "";
+}
+
+function parseVerificationChecks(entryText) {
+  return extractProgressSection(entryText, "Verification")
+    .map((line) => line.replace(/^- /, "").trim())
+    .filter(Boolean);
+}
+
+function buildVerificationSummary(entryText) {
+  const checks = parseVerificationChecks(entryText);
+  const passCount = checks.filter((line) => /->\s*PASS\b/i.test(line)).length;
+  const failCount = checks.filter((line) => /->\s*FAIL\b/i.test(line)).length;
+  const otherCount = Math.max(0, checks.length - passCount - failCount);
+  const parts = [];
+  if (passCount) parts.push(`${passCount} pass`);
+  if (failCount) parts.push(`${failCount} fail`);
+  if (otherCount) parts.push(`${otherCount} other`);
+  return {
+    summary: parts.join(", "),
+    passCount,
+    failCount,
+    otherCount,
+    checks,
+  };
+}
+
+function normalizeHintLine(line) {
+  return String(line || "").replace(/^- /, "").trim();
+}
+
+function splitProgressHints(entryText) {
+  const notes = extractProgressSection(entryText, "Notes").map(normalizeHintLine).filter(Boolean);
+  const outcome = extractProgressSection(entryText, "Outcome").map(normalizeHintLine).filter(Boolean);
+  const filesChanged = extractProgressSection(entryText, "Files changed").map(normalizeHintLine).filter(Boolean);
+  const notesForReuse = [];
+  const notesToAvoid = [];
+  const avoidPattern = /\b(avoid|do not|don't|failed?|failure|flaky|hang|stuck|timeout|timed out|broke|broken)\b/i;
+  for (const note of notes) {
+    if (avoidPattern.test(note)) {
+      notesToAvoid.push(note);
+    } else {
+      notesForReuse.push(note);
+    }
+  }
+  return {
+    notes,
+    outcome,
+    filesChanged,
+    notesForReuse,
+    notesToAvoid,
+  };
+}
+
+function inferRecoveryUsed(logText, entryText) {
+  const combined = `${String(logText || "")}\n${String(entryText || "")}`;
+  if (/falling back to CLI|SDK fallback -> CLI|sdk startup error/i.test(combined)) return "sdk_fallback";
+  if (/\b(npm|pnpm|yarn)\s+(install|ci)\b/i.test(combined)) return "package_install";
+  if (/killProcessTree|process cleanup|taskkill|pkill|stop-process/i.test(combined)) return "process_cleanup";
+  if (/\bretry(ing)?\b/i.test(combined)) return "retry";
+  return "";
+}
+
+function inferFailureClass(status, verificationSummary, completePresent, logText) {
+  if (status === "success") return "";
+  if (status === "interrupted") return "interrupted";
+  if (!completePresent && status !== "error") return "missing_completion_marker";
+  if (verificationSummary.failCount > 0) return "verification_failed";
+  if (/sdk startup error|command failed|Agent command not found|Unknown arg:/i.test(String(logText || ""))) {
+    return "runner_command_failed";
+  }
+  return "agent_error";
+}
+
+function writeStoryReflection(reflectionPath, payload) {
+  writeJson(reflectionPath, payload);
+}
+
+function recipeSlug(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "recipe";
+}
+
+function extractVerificationCommand(checkLine) {
+  const match = String(checkLine || "").match(/^(.*?)\s*->\s*(PASS|FAIL)\b/i);
+  return (match ? match[1] : checkLine || "").trim();
+}
+
+function parseBrowserServeCommand(command) {
+  const parts = String(command || "").split(/\s+--\s+/);
+  return parts.length > 1 ? parts[parts.length - 1].trim() : "";
+}
+
+function inferStackHints(command) {
+  const value = String(command || "");
+  const hints = [];
+  if (/\bnpm\b|\bpnpm\b|\byarn\b|\bnode\b/i.test(value)) hints.push("node");
+  if (/\bpython\b|\bpytest\b|\bpip\b/i.test(value)) hints.push("python");
+  if (/\bdotnet\b/i.test(value)) hints.push("dotnet");
+  if (/browser-check|playwright|serve-and-run/i.test(value)) hints.push("frontend");
+  return hints;
+}
+
+function collectRecipeCandidates(reflection) {
+  const candidates = [];
+  const seen = new Set();
+  const addCandidate = (candidate) => {
+    if (!candidate || !candidate.id || seen.has(candidate.id)) return;
+    seen.add(candidate.id);
+    candidates.push(candidate);
+  };
+
+  for (const check of reflection.verificationChecks || []) {
+    const command = extractVerificationCommand(check);
+    if (!command) continue;
+    if (/browser-check\.cjs/i.test(command) && /\bserve-and-run\b/i.test(command)) {
+      const serverCommand = parseBrowserServeCommand(command);
+      addCandidate({
+        id: `frontend-dev-server-${recipeSlug(serverCommand || command)}`,
+        kind: "frontend_dev_server",
+        trigger: "Frontend stories in this repo that need a local dev server.",
+        steps: serverCommand ? [serverCommand] : [command],
+        stackHints: inferStackHints(serverCommand || command),
+      });
+      addCandidate({
+        id: `browser-readiness-${recipeSlug(command)}`,
+        kind: "browser_readiness_check",
+        trigger: "Frontend stories in this repo that need browser verification.",
+        steps: [command],
+        stackHints: inferStackHints(command),
+      });
+      continue;
+    }
+    if (/\b(npm|pnpm|yarn)\s+(install|ci)\b/i.test(command)) {
+      addCandidate({
+        id: `package-install-${recipeSlug(command)}`,
+        kind: "package_install_recovery",
+        trigger: "Repo setup or dependency recovery on this repo.",
+        steps: [command],
+        stackHints: inferStackHints(command),
+      });
+      continue;
+    }
+    if (/\b(npm test|npm run test|pnpm test|yarn test|pytest|dotnet test|go test|cargo test)\b/i.test(command)) {
+      addCandidate({
+        id: `fallback-test-${recipeSlug(command)}`,
+        kind: "fallback_test_command",
+        trigger: "Final verification when this repo needs a focused test command.",
+        steps: [command],
+        stackHints: inferStackHints(command),
+      });
+    }
+  }
+
+  if (reflection.recoveryUsed === "process_cleanup") {
+    addCandidate({
+      id: "windows-process-cleanup",
+      kind: "windows_process_cleanup",
+      trigger: "Windows process cleanup after stuck local verification processes.",
+      steps: ["taskkill /PID <pid> /T /F"],
+      stackHints: ["windows"],
+    });
+  }
+
+  return candidates;
+}
+
+function listRecipeFiles() {
+  if (!exists(recipesDir)) return [];
+  return fs.readdirSync(recipesDir)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => path.join(recipesDir, name));
+}
+
+function readRecipe(filePath) {
+  try {
+    return readJson(filePath);
+  } catch {
+    return null;
+  }
+}
+
+function writeRecipe(filePath, payload) {
+  writeJson(filePath, payload);
+}
+
+function updateRecipesFromReflection(reflection) {
+  if (!reflection || reflection.status !== "success") return [];
+  ensureDir(recipesDir);
+  const updated = [];
+  for (const candidate of collectRecipeCandidates(reflection)) {
+    const recipePath = path.join(recipesDir, `${candidate.id}.json`);
+    const existing = readRecipe(recipePath) || {
+      id: candidate.id,
+      kind: candidate.kind,
+      trigger: candidate.trigger,
+      steps: candidate.steps,
+      evidence: [],
+      repoScope: rootDir,
+      stackHints: candidate.stackHints,
+      successCount: 0,
+      reuseSuccessCount: 0,
+      trusted: false,
+      lastValidatedAt: "",
+    };
+    const evidenceKey = `${reflection.runId}:${reflection.iteration}:${reflection.storyId}`;
+    const evidence = Array.isArray(existing.evidence) ? existing.evidence : [];
+    if (!evidence.some((item) => item.key === evidenceKey)) {
+      evidence.push({
+        key: evidenceKey,
+        runId: reflection.runId,
+        iteration: reflection.iteration,
+        storyId: reflection.storyId,
+        storyTitle: reflection.storyTitle,
+        at: reflection.generatedAt || nowIso(),
+      });
+      existing.successCount = Number(existing.successCount || 0) + 1;
+    }
+    existing.kind = candidate.kind;
+    existing.trigger = candidate.trigger;
+    existing.steps = candidate.steps;
+    existing.repoScope = rootDir;
+    existing.stackHints = candidate.stackHints;
+    existing.evidence = evidence.slice(-5);
+    existing.reuseSuccessCount = Math.max(0, Number(existing.successCount || 0) - 1);
+    existing.trusted = existing.reuseSuccessCount >= 1;
+    existing.lastValidatedAt = reflection.generatedAt || nowIso();
+    writeRecipe(recipePath, existing);
+    updated.push(existing);
+  }
+  return updated;
+}
+
+function scoreRecipeForStory(recipe, storyText, hasPackageJson) {
+  let score = 0;
+  const kind = String(recipe?.kind || "");
+  const text = String(storyText || "").toLowerCase();
+  if (!recipe?.trusted) return -1;
+  if (kind === "fallback_test_command") score += 2;
+  if (kind === "package_install_recovery") score += /\binstall|dependency|setup|build\b/.test(text) ? 3 : 0;
+  if (kind === "frontend_dev_server" || kind === "browser_readiness_check") {
+    score += /\b(frontend|browser|ui|page|screen|component|visual)\b/.test(text) ? 5 : 0;
+  }
+  if (kind === "windows_process_cleanup") {
+    score += process.platform === "win32" && /\b(server|browser|dev|process)\b/.test(text) ? 2 : 0;
+  }
+  if (hasPackageJson && Array.isArray(recipe.stackHints) && recipe.stackHints.includes("node")) score += 1;
+  return score;
+}
+
+function buildRecipesContext(dstPath, storyTitle, storyBlock) {
+  let output = "# Trusted Recipes\n\n";
+  if (!exists(recipesDir)) {
+    output += "(none)\n";
+    fs.writeFileSync(dstPath, output);
+    return measureText(output);
+  }
+  const hasPackageJson = exists(path.join(rootDir, "package.json"));
+  const storyText = `${storyTitle || ""}\n${storyBlock || ""}`;
+  const recipes = listRecipeFiles()
+    .map((filePath) => readRecipe(filePath))
+    .filter(Boolean)
+    .map((recipe) => ({ recipe, score: scoreRecipeForStory(recipe, storyText, hasPackageJson) }))
+    .filter((item) => item.score >= 2)
+    .sort((a, b) => b.score - a.score || String(a.recipe.id).localeCompare(String(b.recipe.id)))
+    .slice(0, 3)
+    .map(({ recipe }) => recipe);
+
+  if (!recipes.length) {
+    output += "(none)\n";
+    fs.writeFileSync(dstPath, output);
+    return measureText(output);
+  }
+
+  const lines = [];
+  for (const recipe of recipes) {
+    lines.push(`- ${recipe.kind}: ${recipe.trigger}`);
+    for (const step of recipe.steps || []) {
+      lines.push(`  steps: ${step}`);
+    }
+  }
+  output += `${lines.join("\n")}\n`;
+  fs.writeFileSync(dstPath, output);
+  return measureText(output);
+}
+
+function loadStoryReflections(runId, storyId) {
+  if (!runId || !storyId || !exists(runsDir)) return [];
+  return fs.readdirSync(runsDir)
+    .filter((name) => name.startsWith(`run-${runId}-iter-`) && name.endsWith(".reflection.json"))
+    .map((name) => readRecipe(path.join(runsDir, name)))
+    .filter((item) => item && item.storyId === storyId)
+    .sort((a, b) => Number(a.iteration || 0) - Number(b.iteration || 0));
+}
+
+function countVerificationFailures(checks) {
+  return (checks || []).filter((line) => /->\s*FAIL\b/i.test(String(line || ""))).length;
+}
+
+function detectStuckStory(runId, storyId) {
+  const reflections = loadStoryReflections(runId, storyId);
+  const recent = reflections.slice(-3);
+  if (recent.length >= 2) {
+    const lastTwo = recent.slice(-2);
+    if (lastTwo.every((item) => item.failureClass === "runner_command_failed")) {
+      return {
+        reason: "repeated_command_failure",
+        message: `Story ${storyId} hit repeated runner command failures in ${lastTwo.length} consecutive iterations.`,
+      };
+    }
+  }
+  if (recent.length < 3) return null;
+  const allNonSuccess = recent.every((item) => item.status === "error" || item.status === "incomplete");
+  if (!allNonSuccess) return null;
+  const noMeaningfulChange = recent.every((item) => {
+    const committed = Array.isArray(item.committedFiles) ? item.committedFiles.length : 0;
+    const dirty = Array.isArray(item.dirtyFiles) ? item.dirtyFiles.length : 0;
+    const filesChanged = Array.isArray(item.filesChanged) ? item.filesChanged.length : 0;
+    return committed === 0 && dirty === 0 && filesChanged === 0;
+  });
+  const repeatedVerificationFailure = recent.every((item) => countVerificationFailures(item.verificationChecks) > 0);
+  const failureClasses = Array.from(new Set(recent.map((item) => item.failureClass).filter(Boolean)));
+  return {
+    reason: repeatedVerificationFailure ? "repeated_verification_failure" : "repeated_non_success",
+    message: noMeaningfulChange
+      ? `Story ${storyId} appears stuck after ${recent.length} consecutive non-success iterations with no meaningful file change.`
+      : `Story ${storyId} appears stuck after ${recent.length} consecutive non-success iterations${failureClasses.length ? ` (${failureClasses.join(", ")})` : ""}.`,
+  };
+}
+
+function defaultStrategyStats() {
+  return {
+    schemaVersion: 1,
+    updatedAt: "",
+    strategies: {},
+  };
+}
+
+function readStrategyStats() {
+  if (!exists(strategyStatsPath)) return defaultStrategyStats();
+  try {
+    return { ...defaultStrategyStats(), ...readJson(strategyStatsPath) };
+  } catch {
+    return defaultStrategyStats();
+  }
+}
+
+function writeStrategyStats(stats) {
+  writeJson(strategyStatsPath, stats);
+}
+
+function updateStrategyBucket(bucket, reflection) {
+  const next = bucket || {
+    successCount: 0,
+    failureCount: 0,
+    avgDurationMs: 0,
+    avgPriceishTokens: 0,
+    samples: 0,
+    lastSeenAt: "",
+  };
+  const success = reflection.status === "success";
+  next.successCount += success ? 1 : 0;
+  next.failureCount += success ? 0 : 1;
+  const samples = Number(next.samples || 0) + 1;
+  const durationMs = Number(reflection.durationSeconds || 0) * 1000;
+  const priceishTokens = Number(reflection.priceishTokens || 0);
+  next.avgDurationMs = Math.round(((Number(next.avgDurationMs || 0) * (samples - 1)) + durationMs) / samples);
+  next.avgPriceishTokens = Math.round(((Number(next.avgPriceishTokens || 0) * (samples - 1)) + priceishTokens) / samples);
+  next.samples = samples;
+  next.lastSeenAt = reflection.generatedAt || nowIso();
+  return next;
+}
+
+function inferStrategyKeys(reflection, tinyTaskMode, barebonesMode) {
+  const keys = [];
+  if (tinyTaskMode === "true") keys.push("tiny_mode");
+  if (barebonesMode === "true") keys.push("barebones_mode");
+  const checks = reflection.verificationChecks || [];
+  if (checks.some((line) => /browser-check\.cjs|serve-and-run/i.test(String(line || "")))) {
+    keys.push("browser_verification");
+  }
+  if (checks.some((line) => /\b(pytest|npm test|npm run test|pnpm test|yarn test|dotnet test|go test|cargo test)\b/i.test(String(line || "")))) {
+    keys.push("backend_path");
+  }
+  return Array.from(new Set(keys));
+}
+
+function updateStrategyMemory(reflection, tinyTaskMode, barebonesMode) {
+  if (!reflection) return;
+  ensureDir(knowledgeDir);
+  const stats = readStrategyStats();
+  for (const key of inferStrategyKeys(reflection, tinyTaskMode, barebonesMode)) {
+    stats.strategies[key] = updateStrategyBucket(stats.strategies[key], reflection);
+  }
+  stats.updatedAt = reflection.generatedAt || nowIso();
+  writeStrategyStats(stats);
+}
+
+function formatStrategyLine(key, bucket) {
+  const success = Number(bucket?.successCount || 0);
+  const failure = Number(bucket?.failureCount || 0);
+  return `- ${key}: success ${success}, failure ${failure}, avg ${Math.round(Number(bucket?.avgDurationMs || 0) / 1000)}s, avg ${formatCount(Number(bucket?.avgPriceishTokens || 0))} price-ish tokens`;
+}
+
+function buildStrategyContext(dstPath, storyTitle, storyBlock, tinyTaskMode, barebonesMode) {
+  let output = "# Strategy Memory\n\n";
+  const stats = readStrategyStats();
+  const text = `${storyTitle || ""}\n${storyBlock || ""}`.toLowerCase();
+  const keys = [];
+  if (tinyTaskMode === "true") keys.push("tiny_mode");
+  if (barebonesMode === "true") keys.push("barebones_mode");
+  if (/\b(frontend|browser|ui|page|screen|component|visual)\b/.test(text)) {
+    keys.push("browser_verification");
+  } else {
+    keys.push("backend_path");
+  }
+  const lines = Array.from(new Set(keys))
+    .map((key) => ({ key, bucket: stats.strategies[key] }))
+    .filter((item) => item.bucket && Number(item.bucket.samples || 0) > 0)
+    .map((item) => formatStrategyLine(item.key, item.bucket));
+  if (!lines.length) {
+    output += "(none)\n";
+  } else {
+    output += `${lines.join("\n")}\n`;
+  }
+  fs.writeFileSync(dstPath, output);
+  return measureText(output);
+}
+
+function buildBackpressureHints(storyTitle, storyBlock, tinyTaskMode, barebonesMode) {
+  const stats = readStrategyStats().strategies || {};
+  const text = `${storyTitle || ""}\n${storyBlock || ""}`.toLowerCase();
+  const hints = [];
+  if (tinyTaskMode === "true" && stats.tiny_mode && Number(stats.tiny_mode.successCount || 0) >= Number(stats.tiny_mode.failureCount || 0)) {
+    hints.push("Tiny-mode has been acceptable more often than not in this repo; keep verification narrow unless the story or quality gates force more.");
+  }
+  if (barebonesMode === "true" && stats.barebones_mode && Number(stats.barebones_mode.successCount || 0) >= Number(stats.barebones_mode.failureCount || 0)) {
+    hints.push("Barebones mode has been viable here; prefer one decisive check over layered validation.");
+  }
+  if (/\b(frontend|browser|ui|page|screen|component|visual)\b/.test(text)) {
+    const browser = stats.browser_verification;
+    if (browser && Number(browser.successCount || 0) > Number(browser.failureCount || 0)) {
+      hints.push("Browser verification has paid off on similar stories here; use it when the change is user-visible.");
+    }
+    if (browser && Number(browser.failureCount || 0) >= Math.max(2, Number(browser.successCount || 0))) {
+      hints.push("Browser verification has been flaky here; fail fast on repeated readiness/startup issues instead of drifting into retries.");
+    }
+  } else {
+    const backend = stats.backend_path;
+    if (backend && Number(backend.successCount || 0) >= Number(backend.failureCount || 0)) {
+      hints.push("Focused backend verification has been sufficient more often than not; escalate to broader checks only when the first pass or quality gates demand it.");
+    }
+  }
+  return hints.length ? hints.map((line) => `- ${line}`).join("\n") : "- (none)";
+}
+
 function buildProgressContext(dstPath, tinyMode) {
   let output = "# Progress Snapshot\n\n";
   if (tinyMode === "true") {
@@ -492,7 +979,7 @@ function updateStoryStatus(storyId, newStatus) {
   writeJson(prdPath, data);
 }
 
-function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressContextPath, tinyTaskMode, barebonesMode, iteration, runLog, runMetaPath) {
+function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressContextPath, recipesContextPath, strategyContextPath, tinyTaskMode, barebonesMode, iteration, runLog, runMetaPath) {
   let src = fs.readFileSync(srcPath, "utf-8");
   let meta = {};
   try {
@@ -507,6 +994,8 @@ function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressC
     AGENTS_PATH: agentsPath,
     PROGRESS_PATH: progressPath,
     PROGRESS_CONTEXT_PATH: progressContextPath,
+    RECIPES_CONTEXT_PATH: recipesContextPath,
+    STRATEGY_CONTEXT_PATH: strategyContextPath,
     ERRORS_LOG_PATH: errorsLogPath,
     NO_COMMIT: String(noCommit),
     TINY_TASK_MODE: tinyTaskMode,
@@ -522,6 +1011,9 @@ function renderPrompt(srcPath, dstPath, storyMetaPath, storyBlockPath, progressC
     STORY_ID: meta.id || "",
     STORY_TITLE: meta.title || "",
     STORY_BLOCK: storyBlock,
+    RECIPES_BLOCK: exists(recipesContextPath) ? fs.readFileSync(recipesContextPath, "utf-8").trim() : "(none)",
+    STRATEGY_BLOCK: exists(strategyContextPath) ? fs.readFileSync(strategyContextPath, "utf-8").trim() : "(none)",
+    BACKPRESSURE_HINTS: buildBackpressureHints(meta.title || "", storyBlock, tinyTaskMode, barebonesMode),
     QUALITY_GATES: Array.isArray(meta.quality_gates) && meta.quality_gates.length
       ? meta.quality_gates.map((gate) => `- ${gate}`).join("\n")
       : "- (none)",
@@ -603,6 +1095,7 @@ function writeRunMeta(metaPath, payload) {
     `- Status: ${payload.status}`,
     `- Backend: ${payload.backend || "cli"}`,
     `- Log: ${payload.logFile}`,
+    `- Reflection: ${payload.reflectionFile || "unknown"}`,
     "",
   );
   if (payload.tokenStats) {
@@ -636,6 +1129,8 @@ function writeRunMeta(metaPath, payload) {
         `- Prompt: ${formatCount(payload.promptMetrics.bytes)} bytes, ${formatCount(payload.promptMetrics.words)} words, ${formatCount(payload.promptMetrics.lines)} lines`,
         `- Story Block: ${formatCount(payload.promptMetrics.storyBlockBytes)} bytes, ${formatCount(payload.promptMetrics.storyBlockWords)} words`,
         `- Progress Snapshot: ${formatCount(payload.promptMetrics.progressBytes)} bytes, ${formatCount(payload.promptMetrics.progressWords)} words`,
+        `- Recipes Snapshot: ${formatCount(payload.promptMetrics.recipeBytes)} bytes, ${formatCount(payload.promptMetrics.recipeWords)} words`,
+        `- Strategy Snapshot: ${formatCount(payload.promptMetrics.strategyBytes)} bytes, ${formatCount(payload.promptMetrics.strategyWords)} words`,
         "",
       );
     }
@@ -1225,6 +1720,8 @@ async function runPrd() {
 function initializeFiles() {
   ensureDir(tmpDir);
   ensureDir(runsDir);
+  ensureDir(knowledgeDir);
+  ensureDir(recipesDir);
   stageHelperWrappers();
   ensureFile(progressPath, `# Progress Log\nStarted: ${new Date().toString()}\n\n## Codebase Patterns\n- (add reusable patterns here)\n\n---\n`);
   ensureFile(guardrailsPath, "# Guardrails (Signs)\n\n> Lessons learned from failures. Read before acting.\n\n## Core Signs\n\n### Sign: Read Before Writing\n- **Trigger**: Before modifying any file\n- **Instruction**: Read the file first\n- **Added after**: Core principle\n\n### Sign: Test Before Commit\n- **Trigger**: Before committing changes\n- **Instruction**: Run required tests and verify outputs\n- **Added after**: Core principle\n\n---\n\n## Learned Signs\n\n");
@@ -1270,6 +1767,7 @@ async function runBuild() {
     const storyMeta = path.join(tmpDir, `story-${runTag}-${iteration}.json`);
     const storyBlock = path.join(tmpDir, `story-${runTag}-${iteration}.md`);
     const metricsFile = path.join(runsDir, `run-${runTag}-iter-${iteration}.metrics.json`);
+    const reflectionFile = path.join(runsDir, `run-${runTag}-iter-${iteration}.reflection.json`);
     const selectStart = Date.now();
     selectStory(storyMeta, storyBlock);
     const storySelectionMs = Date.now() - selectStart;
@@ -1295,6 +1793,8 @@ async function runBuild() {
     const headBefore = gitHead();
     const promptRendered = path.join(tmpDir, `prompt-${runTag}-${iteration}.md`);
     const progressContext = path.join(tmpDir, `progress-${runTag}-${iteration}.md`);
+    const recipesContext = path.join(tmpDir, `recipes-${runTag}-${iteration}.md`);
+    const strategyContext = path.join(tmpDir, `strategy-${runTag}-${iteration}.md`);
     const logFile = path.join(runsDir, `run-${runTag}-iter-${iteration}.log`);
     const runMeta = path.join(runsDir, `run-${runTag}-iter-${iteration}.md`);
     const tinyTaskMode = tinyTaskModeOverride || tinyTaskModeFromMeta(storyMeta);
@@ -1302,10 +1802,13 @@ async function runBuild() {
     const progressStart = Date.now();
     const progressMetrics = buildProgressContext(progressContext, tinyTaskMode);
     const progressSnapshotMs = Date.now() - progressStart;
+    const storyBlockText = exists(storyBlock) ? fs.readFileSync(storyBlock, "utf-8") : "";
+    const recipesMetrics = buildRecipesContext(recipesContext, storyTitle, storyBlockText);
+    const strategyMetrics = buildStrategyContext(strategyContext, storyTitle, storyBlockText, tinyTaskMode, barebonesMode);
     const promptStart = Date.now();
-    const promptMetrics = renderPrompt(promptFile, promptRendered, storyMeta, storyBlock, progressContext, tinyTaskMode, barebonesMode, iteration, logFile, runMeta);
+    const promptMetrics = renderPrompt(promptFile, promptRendered, storyMeta, storyBlock, progressContext, recipesContext, strategyContext, tinyTaskMode, barebonesMode, iteration, logFile, runMeta);
     const promptRenderMs = Date.now() - promptStart;
-    const storyBlockMetrics = measureText(exists(storyBlock) ? fs.readFileSync(storyBlock, "utf-8") : "");
+    const storyBlockMetrics = measureText(storyBlockText);
 
     logActivity(`ITERATION ${iteration} start (mode=${mode} story=${storyId})`);
     interruptRequested = false;
@@ -1340,6 +1843,14 @@ async function runBuild() {
     const dirtyFiles = gitDirtyFiles();
     const tokenStats = result.tokenStats || extractTokenStats(logFile);
     const tokensUsed = tokenStats ? (tokenStats.priceishTokens || tokenStats.totalTokens) : null;
+    const completePresent = result.completed ?? hasCompletionMarker(logFile);
+    const storyOutcomeStatus = interrupted
+      ? "interrupted"
+      : result.status !== 0
+        ? "error"
+        : completePresent
+          ? "success"
+          : "incomplete";
     if (tokenStats) {
       const stepPriceishTokens = tokenStats.priceishTokens || tokenStats.totalTokens;
       cumulativeTokenStats = {
@@ -1354,6 +1865,12 @@ async function runBuild() {
     }
     const logBytes = exists(logFile) ? fs.statSync(logFile).size : 0;
     const statusLabel = interrupted ? "interrupted" : result.status !== 0 ? "error" : "success";
+    const progressEntry = findProgressEntryForIteration(runTag, iteration);
+    const verificationSummary = buildVerificationSummary(progressEntry);
+    const progressHints = splitProgressHints(progressEntry);
+    const logText = exists(logFile) ? fs.readFileSync(logFile, "utf-8") : "";
+    const recoveryUsed = inferRecoveryUsed(logText, progressEntry);
+    const failureClass = inferFailureClass(storyOutcomeStatus, verificationSummary, completePresent, logText);
     if (!noCommit && dirtyFiles && !interrupted) {
       logError(`ITERATION ${iteration} left uncommitted changes; review run summary at ${runMeta}`);
     }
@@ -1374,6 +1891,7 @@ async function runBuild() {
       status: statusLabel,
       backend: result.backend || "cli",
       logFile,
+      reflectionFile,
       headBefore,
       headAfter,
       commitList,
@@ -1387,6 +1905,10 @@ async function runBuild() {
         storyBlockWords: storyBlockMetrics.words,
         progressBytes: progressMetrics.bytes,
         progressWords: progressMetrics.words,
+        recipeBytes: recipesMetrics.bytes,
+        recipeWords: recipesMetrics.words,
+        strategyBytes: strategyMetrics.bytes,
+        strategyWords: strategyMetrics.words,
       },
       phaseMetrics: {
         storySelectionMs,
@@ -1410,6 +1932,7 @@ async function runBuild() {
       tokenStats,
       status: statusLabel,
       backend: result.backend || "cli",
+      reflectionFile,
       prompt: {
         bytes: promptMetrics.bytes,
         words: promptMetrics.words,
@@ -1417,6 +1940,8 @@ async function runBuild() {
       },
       storyBlock: storyBlockMetrics,
       progressSnapshot: progressMetrics,
+      recipesSnapshot: recipesMetrics,
+      strategySnapshot: strategyMetrics,
       output: {
         logBytes,
       },
@@ -1429,6 +1954,39 @@ async function runBuild() {
         totalMs: iterEnd - iterStart,
       },
     });
+
+    writeStoryReflection(reflectionFile, {
+      schemaVersion: 1,
+      runId: runTag,
+      iteration,
+      storyId,
+      storyTitle,
+      status: storyOutcomeStatus,
+      durationSeconds: iterDuration,
+      priceishTokens: tokensUsed,
+      promptBytes: promptMetrics.bytes,
+      progressBytes: progressMetrics.bytes,
+      verificationSummary: verificationSummary.summary,
+      verificationChecks: verificationSummary.checks,
+      recoveryUsed: recoveryUsed || null,
+      failureClass: failureClass || null,
+      notesForReuse: progressHints.notesForReuse,
+      notesToAvoid: progressHints.notesToAvoid,
+      outcome: progressHints.outcome,
+      filesChanged: progressHints.filesChanged,
+      backend: result.backend || "cli",
+      completed: completePresent,
+      committedFiles: changedFiles
+        ? changedFiles.split(/\r?\n/).map((line) => line.replace(/^- /, "").trim()).filter(Boolean)
+        : [],
+      dirtyFiles: dirtyFiles
+        ? dirtyFiles.split(/\r?\n/).map((line) => line.replace(/^- /, "").trim()).filter(Boolean)
+        : [],
+      generatedAt: nowIso(),
+    });
+    const reflectionData = readJson(reflectionFile);
+    updateRecipesFromReflection(reflectionData);
+    updateStrategyMemory(reflectionData, tinyTaskMode, barebonesMode);
 
     appendRunSummary(`${formatLogDate(new Date())} | run=${runTag} | iter=${iteration} | mode=${mode} | story=${storyId} | duration=${iterDuration}s | tokens=${tokensUsed == null ? "unknown" : tokensUsed} | status=${statusLabel}`);
 
@@ -1466,7 +2024,7 @@ async function runBuild() {
       } else {
         console.log("Iteration failed; story reset to open.");
       }
-    } else if (result.completed ?? hasCompletionMarker(logFile)) {
+    } else if (completePresent) {
       updateStoryStatus(storyId, "done");
       if (quietMode) {
         quietEcho(`Build: story ${storyId} complete`);
@@ -1479,6 +2037,19 @@ async function runBuild() {
         quietEcho(`Build: story ${storyId} incomplete`);
       } else {
         console.log("No completion signal; story reset to open.");
+      }
+    }
+
+    if (storyOutcomeStatus === "error" || storyOutcomeStatus === "incomplete") {
+      const stuckDecision = detectStuckStory(runTag, storyId);
+      if (stuckDecision) {
+        logError(`ITERATION ${iteration} stuck-loop detected (${stuckDecision.reason}); ${stuckDecision.message}`);
+        if (quietMode) {
+          quietEcho(`Build: stuck-loop detected for ${storyId}`);
+        } else {
+          console.error(`Stuck-loop detected: ${stuckDecision.message}`);
+        }
+        process.exit(1);
       }
     }
 

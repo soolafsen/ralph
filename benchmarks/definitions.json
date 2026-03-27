@@ -1,10 +1,10 @@
 {
   "benchmarks": [
     {
-      "id": "prdtest01",
-      "name": "PRDTEST01 React Styled Hello",
+      "id": "deep-react-browser",
+      "name": "Deep React Browser App",
       "skill": "prdtest01",
-      "expectedPrdFilename": "prdtest01-react-styled-hello.json",
+      "expectedPrdFilename": "deep-react-browser-app.json",
       "tier": "deep",
       "storyCount": 3,
       "estimatedCost": "medium",
@@ -14,13 +14,13 @@
         "verification",
         "readme instructions"
       ],
-      "notes": "Small React frontend benchmark with styling and frontend verification pressure"
+      "notes": "Small React frontend benchmark with styling and browser verification pressure"
     },
     {
-      "id": "prdtest02",
-      "name": "PRDTEST02 Python 99 Primes",
+      "id": "quick-python-primes",
+      "name": "Quick Python Primes CLI",
       "skill": "prdtest02",
-      "expectedPrdFilename": "prdtest02-python-99-primes.json",
+      "expectedPrdFilename": "quick-python-primes-cli.json",
       "tier": "quick",
       "storyCount": 3,
       "estimatedCost": "low",
@@ -32,10 +32,10 @@
       "notes": "Small Python CLI benchmark with low setup cost"
     },
     {
-      "id": "prdtest03",
-      "name": "PRDTEST03 CSharp InMemory DB",
+      "id": "deep-dotnet-crud",
+      "name": "Deep Dotnet InMemory CRUD",
       "skill": "prdtest03",
-      "expectedPrdFilename": "prdtest03-csharp-inmemory-db.json",
+      "expectedPrdFilename": "deep-dotnet-inmemory-crud.json",
       "tier": "deep",
       "storyCount": 4,
       "estimatedCost": "medium",
@@ -48,10 +48,10 @@
       "notes": "Small .NET in-memory CRUD benchmark with multi-story structure"
     },
     {
-      "id": "prdtest04",
-      "name": "PRDTEST04 Node Tiny CLI",
+      "id": "quick-node-cli",
+      "name": "Quick Node Tiny CLI",
       "skill": "prdtest04",
-      "expectedPrdFilename": "prdtest04-node-tiny-cli.json",
+      "expectedPrdFilename": "quick-node-tiny-cli.json",
       "tier": "quick",
       "storyCount": 3,
       "estimatedCost": "very_low",
@@ -63,11 +63,11 @@
       "notes": "Low-token overhead benchmark for prompt and loop efficiency"
     },
     {
-      "id": "prdtest05",
-      "name": "PRDTEST05 Node Tiny API",
+      "id": "hourly-node-api",
+      "name": "Hourly Node Tiny API",
       "skill": "prdtest05",
-      "expectedPrdFilename": "prdtest05-node-tiny-api.json",
-      "tier": "quick",
+      "expectedPrdFilename": "hourly-node-tiny-api.json",
+      "tier": "hourly",
       "storyCount": 4,
       "estimatedCost": "medium",
       "focus": [
@@ -77,31 +77,122 @@
         "run instructions"
       ],
       "notes": "Server/process lifecycle benchmark with lightweight API behavior"
+    },
+    {
+      "id": "smoke-node-json-cli",
+      "name": "Smoke Node JSON CLI",
+      "skill": "prdtest06",
+      "expectedPrdFilename": "smoke-node-json-cli.json",
+      "tier": "smoke",
+      "storyCount": 3,
+      "estimatedCost": "very_low",
+      "focus": [
+        "json parsing",
+        "file io",
+        "cheap verification"
+      ],
+      "notes": "Very small JSON/file benchmark with focused test pressure and low setup cost"
+    },
+    {
+      "id": "smoke-node-library",
+      "name": "Smoke Node Tiny Library",
+      "skill": "prdtest07",
+      "expectedPrdFilename": "smoke-node-tiny-library.json",
+      "tier": "smoke",
+      "storyCount": 3,
+      "estimatedCost": "very_low",
+      "focus": [
+        "library-only",
+        "pure logic",
+        "unit tests"
+      ],
+      "notes": "Very small library benchmark that isolates loop overhead from app startup"
+    },
+    {
+      "id": "hourly-python-library",
+      "name": "Hourly Python Tiny Library",
+      "skill": "prdtest08",
+      "expectedPrdFilename": "hourly-python-tiny-library.json",
+      "tier": "hourly",
+      "storyCount": 3,
+      "estimatedCost": "low",
+      "focus": [
+        "python library",
+        "pure logic",
+        "pytest"
+      ],
+      "notes": "Cheap Python library benchmark without CLI or server scaffolding"
+    },
+    {
+      "id": "hourly-frontend-build",
+      "name": "Hourly Frontend Build Only",
+      "skill": "prdtest09",
+      "expectedPrdFilename": "hourly-frontend-build-only.json",
+      "tier": "hourly",
+      "storyCount": 3,
+      "estimatedCost": "low",
+      "focus": [
+        "frontend scaffold",
+        "component interaction",
+        "test and build only"
+      ],
+      "notes": "UI-oriented benchmark that avoids browser automation and focuses on build/test verification"
     }
   ],
   "suites": [
     {
+      "id": "smoke",
+      "name": "Smoke Suite",
+      "benchmarkIds": [
+        "smoke-node-library",
+        "smoke-node-json-cli"
+      ],
+      "targetMaxMinutes": 15,
+      "notes": "Fastest benchmark layer for loop-overhead and cheap verification signal in just a few minutes."
+    },
+    {
       "id": "quick",
       "name": "Quick Feedback Suite",
       "benchmarkIds": [
-        "prdtest04",
-        "prdtest02"
+        "smoke-node-library",
+        "smoke-node-json-cli",
+        "quick-node-cli",
+        "quick-python-primes"
       ],
-      "targetMaxMinutes": 20,
-      "notes": "Fast loop feedback covering tiny overhead and cheap CLI behavior with the best chance of staying under 20 minutes."
+      "targetMaxMinutes": 30,
+      "notes": "Regular benchmark layer for day-to-day loop changes, kept around a half-hour budget."
+    },
+    {
+      "id": "hourly",
+      "name": "Hourly Coverage Suite",
+      "benchmarkIds": [
+        "smoke-node-library",
+        "smoke-node-json-cli",
+        "quick-node-cli",
+        "quick-python-primes",
+        "hourly-python-library",
+        "hourly-frontend-build",
+        "hourly-node-api"
+      ],
+      "targetMaxMinutes": 90,
+      "notes": "Broader suite for cheap libraries, cheap CLIs, non-browser frontend work, and lightweight API/process behavior."
     },
     {
       "id": "deep",
       "name": "Deep Coverage Suite",
       "benchmarkIds": [
-        "prdtest04",
-        "prdtest02",
-        "prdtest05",
-        "prdtest03",
-        "prdtest01"
+        "smoke-node-library",
+        "smoke-node-json-cli",
+        "quick-node-cli",
+        "quick-python-primes",
+        "hourly-python-library",
+        "hourly-frontend-build",
+        "hourly-node-api",
+        "deep-dotnet-crud",
+        "deep-react-browser"
       ],
       "targetMaxMinutes": 180,
-      "notes": "Broader coverage across frontend, .NET, Python, Node CLI, and lightweight API work, intended to stay within roughly 2-3 hours."
+      "notes": "Broadest suite covering cheap paths first, then API, .NET, and browser-heavier frontend work."
     }
   ]
 }

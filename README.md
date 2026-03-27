@@ -11,6 +11,13 @@ The main goals of this fork are:
 - use slimmer prompts and less repeated context per iteration
 - keep the loop autonomous without dragging full chat history forward
 
+## Docs
+
+- [Benchmark suites and benchmark IDs](docs/benchmarking.md)
+- [Tuning TODO](docs/tuning-todo.md)
+- [Advanced usage and runtime reference](docs/usage-reference.md)
+- [Ralph improvement ideas](docs/ralph-improvement-ideas.md)
+
 ## What This Fork Changes
 
 Compared with the upstream Ralph flow, this fork adds or changes:
@@ -100,41 +107,39 @@ The main skills are:
 - `prdtest03`
 - `prdtest04`
 - `prdtest05`
+- `prdtest06`
+- `prdtest07`
+- `prdtest08`
+- `prdtest09`
 
-The `prdtestNN` skills are fixed benchmark PRD generators. They let you recreate recognizable test PRDs on demand instead of keeping old PRD JSON files around.
+The benchmark PRD skills still use the stable internal `prdtestNN` names, but the benchmark suite and history use clearer workload-oriented IDs. The short version:
+
+- `smoke` is the few-minute sanity suite
+- `quick` is the regular roughly-30-minute suite
+- `hourly` broadens coverage without going full deep
+- `deep` is the broadest pre-merge confidence suite
+
+Run them with:
+
+```bash
+ralph bench:smoke
+ralph bench:quick
+ralph bench:hourly
+ralph bench:deep
+```
+
+Benchmark details and benchmark IDs live in [docs/benchmarking.md](docs/benchmarking.md).
 
 Examples:
 
 ```bash
-ralph prd 'Use $prdtest01'
-ralph prd 'Use $prdtest02'
-ralph prd 'Use $prdtest03'
+ralph prd 'Use $prdtest07'
+ralph prd 'Use $prdtest06'
 ralph prd 'Use $prdtest04'
-ralph prd 'Use $prdtest05'
+ralph prd 'Use $prdtest02'
 ```
 
-In PowerShell, use single quotes around skill triggers like `$prdtest01` so PowerShell does not expand them before Ralph sees the literal skill name.
-
-Benchmark meanings:
-
-- `prdtest01`: small React frontend benchmark
-- `prdtest02`: small Python CLI benchmark
-- `prdtest03`: small C# in-memory CRUD benchmark
-- `prdtest04`: intentionally cheap Node CLI benchmark for token and overhead checks
-- `prdtest05`: lightweight Node API benchmark for startup, run-instruction, and process-lifecycle checks
-
-Benchmark suites:
-
-- `quick`: `prdtest04`, `prdtest02`
-- `deep`: `prdtest04`, `prdtest02`, `prdtest05`, `prdtest03`, `prdtest01`
-
-The `quick` suite is for fast feedback after Ralph changes and is intended to stay under roughly 20 minutes. The `deep` suite is for broader confidence before merging meaningful workflow changes and is intended to stay within roughly 2-3 hours.
-
-Benchmark history in this repo uses **price-ish tokens** as the primary metric:
-
-- `price-ish = uncached input + output + reasoning`
-- cached input is stored separately as prompt reuse detail
-- raw input is stored separately as prompt footprint detail
+In PowerShell, use single quotes around skill triggers like `$prdtest07` so PowerShell does not expand them before Ralph sees the literal skill name.
 
 For local app verification during Ralph build runs, the bundled Ralph browser helper is now preferred over the persistent `dev-browser` relay server. The main path is a single `serve-and-run` helper call that starts the dev server, runs the headless Playwright check, and then tears the server down. The relay skill remains useful for remote or session-dependent websites.
 
@@ -253,208 +258,7 @@ ralph doctor
 - which Codex backend Ralph would select on this machine
 - why `auto` would fall back to the legacy CLI path
 
-## Tiny Task Mode
-
-Tiny-task mode is designed for very small stories where the original Ralph prompt overhead is wasteful.
-
-By default, tiny-task mode is enabled automatically for small PRDs. In this fork, the threshold is controlled by:
-
-```sh
-TINY_TASK_STORY_MAX=3
-```
-
-You can also force it explicitly with:
-
-```bash
-ralph build 1 --tiny
-```
-
-Tiny-task mode does not change the loop structure. It changes the prompt guidance so Codex prefers the shortest valid implementation and avoids unnecessary scaffolding or ceremony.
-
-Practical effects of `--tiny`:
-
-- biases Codex toward the shortest valid implementation
-- reduces unnecessary scaffolding, ceremony, and extra documentation
-- skips progress snapshot context in the slimmer loop path
-- helps keep trivial tasks from getting over-engineered
-
-What `--tiny` does not do:
-
-- it does not change iteration count
-- it does not skip verification
-- it does not bypass PRD story selection
-- it does not change git or `--no-commit` behavior
-- it does not reduce story count inside the PRD automatically
-
-## Barebones Mode
-
-Barebones mode is for the simplest possible Ralph loop when you want a minimal implementation pass and the lightest acceptable verification.
-
-You can enable it with:
-
-```bash
-ralph build --barebones
-ralph build 3 --barebones
-```
-
-Practical effects of `--barebones`:
-
-- defaults build runs to one iteration unless you pass an explicit iteration count
-- biases the agent toward the smallest viable story implementation
-- avoids tests, browser checks, package installs, and README churn unless the story or quality gates actually require them
-- keeps the loop file-based and story-based like normal Ralph
-
-What `--barebones` does not do:
-
-- it does not bypass PRD story selection
-- it does not ignore explicit quality gates
-- it does not change `--no-commit` behavior
-- it does not prevent you from running multiple iterations when you ask for them
-
-## Quiet Mode
-
-Use `--quiet` when you want a short progress view in the terminal while keeping full logs on disk.
-
-Quiet mode is intended to show only major stage changes, for example:
-
-- PRD started / completed
-- build iteration started
-- story completed / failed / incomplete
-- remaining story count
-- log file path
-- per-step token totals and cumulative token totals when available
-- per-step token breakdown when Codex session data is available: input, cached input, output, and reasoning output
-- end-of-run install or startup commands when Ralph can infer them
-
-The detailed agent output still goes to `.ralph/runs/`.
-
-The quiet heartbeat is now based on actual run-log activity:
-
-- `.` means the run log grew since the last check
-- each quiet-mode status line is prefixed with a 24-hour timestamp like `[19:27:32]`
-- `[thinking 30s]`, `[thinking 60s]`, and so on mean the process is still alive but the log has not changed for that long
-- quiet mode warns when a run is quiet for a long time or when a completion marker appears but the process does not unwind
-
-That makes quiet mode a better liveness signal without pretending stalled output is active progress.
-
-If the agent does not emit a `<run_instructions>` block, Ralph falls back to the essentials it can infer from:
-
-- `AGENTS.md`
-- `README.md`
-- `package.json` scripts
-
-If you interrupt a suspected hang:
-
-- Ralph offers a small interrupt menu
-- if the run log already contains `<promise>COMPLETE</promise>`, the default action is to mark the story `done` and continue
-- otherwise the default action is to reset the story to `open` and retry automatically
-- you can also choose to kill and exit without continuing the run
-
-That allows a cleaner recovery without retyping the Ralph command.
-
-## Browser Visibility
-
-For frontend or UI stories, Ralph still expects browser verification by default.
-
-By default, this fork now guides the agent to prefer headless browser verification so multi-iteration runs do not keep opening visible tabs or windows.
-
-If you do want a real browser window during those checks, use:
-
-```bash
-ralph build 1 --show-browser
-```
-
-What `--show-browser` means:
-
-- it allows visible browser windows or tabs during frontend verification
-- it is intended for manual inspection, demos, or debugging browser-specific issues
-
-What `--show-browser` does not mean:
-
-- it does not disable browser verification
-- it does not force browser verification for non-frontend stories
-- it does not change quiet mode, iteration count, or commit behavior
-
-## Stale Story Recovery
-
-If a run crashes after a story is marked `in_progress`, Ralph can reopen it automatically.
-
-This fork defaults to:
-
-```sh
-STALE_SECONDS=300
-```
-
-That means stories stuck in `in_progress` for more than 5 minutes are reopened automatically on the next loop run.
-
-## Agent Runner
-
-This fork is tuned for Codex first, but the agent map still supports:
-
-- `codex`
-- `claude`
-- `droid`
-- `opencode`
-
-Example:
-
-```bash
-ralph prd --agent=codex
-ralph build 1 --agent=codex
-```
-
-The Codex defaults in this fork use `codex exec`.
-
-By default, Ralph now sets Codex `model_reasoning_effort` to `medium` for its bundled Codex commands. That keeps the default build loop from inheriting a globally configured `high` effort setting unless you explicitly override the agent command.
-
-You can override the Codex backend selection with:
-
-```bash
-set RALPH_CODEX_BACKEND=auto
-set RALPH_CODEX_BACKEND=sdk
-set RALPH_CODEX_BACKEND=cli
-```
-
-Backend meanings:
-
-- `auto`: prefer the SDK on Windows for Codex, then fall back to the legacy CLI path if the SDK is unavailable
-- `sdk`: require the SDK path and fail clearly if it cannot be loaded
-- `cli`: force the legacy `codex exec` orchestration path
-
-## Windows Notes
-
-Important Windows-specific behavior in this fork:
-
-- `ralph build` and `ralph prd` use a native Node supervisor on Windows
-- on Windows with Codex, Ralph now prefers `@openai/codex-sdk` for structured events, token usage, and cancellation
-- if the SDK cannot be used and `RALPH_CODEX_BACKEND=auto`, Ralph falls back to the legacy CLI path and records the fallback
-- the supervisor watches for `<promise>COMPLETE</promise>` and can terminate lingering child trees after a short grace period
-- local frontend checks should use Ralph's direct Playwright helper in one-shot `serve-and-run` mode by default, not the persistent `dev-browser` relay
-- hidden long-running server helpers still exist, but they are secondary to the one-shot verification path for Codex on Windows
-- shell scripts are normalized to LF in the repo
-- the loop banner uses ASCII output to avoid mojibake in Windows terminals
-
-If you are using Bash-specific helpers and `python3` is missing there, check Git Bash:
-
-```bash
-python3 --version
-command -v python3
-```
-
-That check is now optional for the main Windows runner.
-
-## State Files
-
-Ralph writes loop state to `.ralph/`:
-
-- `progress.md`
-- `activity.log`
-- `errors.log`
-- `runs/`
-
-Templates live in `.agents/ralph/`.
-
-PRDs live in `.agents/tasks/`.
+For advanced mode behavior and runtime details, see [docs/usage-reference.md](docs/usage-reference.md).
 
 ## Notes
 
@@ -496,13 +300,13 @@ npm run benchmark:run -- C:\path\to\project
 Record a benchmark run into benchmark history:
 
 ```bash
-npm run benchmark:record -- --benchmark prdtest04 C:\path\to\project
+npm run benchmark:record -- --benchmark quick-node-cli C:\path\to\project
 ```
 
 Compare history for one benchmark:
 
 ```bash
-npm run benchmark:compare -- --benchmark prdtest04
+npm run benchmark:compare -- --benchmark quick-node-cli
 ```
 
 Compare the latest results for a benchmark suite:

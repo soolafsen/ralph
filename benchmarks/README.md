@@ -9,108 +9,143 @@ The benchmark approach stays the same:
 - analyze the run
 - record the result under `benchmarks/history/` and `benchmarks/latest/`
 
-What changes here is the benchmark structure.
+The benchmark skills still use the stable internal `prdtestNN` names, but benchmark history and suite reporting now use clearer workload-oriented IDs.
 
 ## Benchmark Philosophy
 
-The current benchmark PRDs are still useful and should be kept.
+The benchmark set is intentionally layered.
 
-They are intentionally small enough to run regularly, but varied enough to expose different Ralph behaviors:
+That lets Ralph keep forward momentum without turning every feedback loop into a multi-hour run:
 
-- tiny loop overhead
-- cheap CLI work
-- process lifecycle and run instructions
-- multi-story CRUD structure
-- frontend verification pressure
-
-There is no existing benchmark history in this repo yet, so the benchmark metadata can be reset cleanly without losing meaningful comparisons.
+- `smoke` for a few-minute sanity check
+- `quick` for roughly 30-minute day-to-day feedback
+- `hourly` for broader confidence within an hour-ish budget
+- `deep` for the broadest coverage before bigger loop changes
 
 ## Suites
 
-### Quick Feedback Suite
+### Smoke Suite
 
-Use this when you want fast signal after loop or prompt changes.
+Use this when you want the cheapest signal possible after a narrow loop change.
 
 Benchmarks:
 
-- `prdtest04` Node Tiny CLI
-- `prdtest02` Python 99 Primes
+- `smoke-node-library`
+- `smoke-node-json-cli`
 
 Why this suite exists:
 
-- fast enough to run often
-- covers tiny-task overhead and cheap non-UI execution
-- good first pass for token and runtime regressions
-- should have the best chance of staying under roughly 20 minutes total
+- exposes raw loop overhead quickly
+- keeps setup and verification cheap
+- should stay in the low-minutes range on a healthy setup
+
+### Quick Feedback Suite
+
+Use this when you want regular benchmark feedback after runner, prompt, or retry changes.
+
+Benchmarks:
+
+- `smoke-node-library`
+- `smoke-node-json-cli`
+- `quick-node-cli`
+- `quick-python-primes`
+
+Why this suite exists:
+
+- keeps a cheap baseline from `smoke`
+- adds two recognizable CLI tasks across Node and Python
+- aims to stay around 30 minutes instead of drifting toward an hour
+
+### Hourly Coverage Suite
+
+Use this when you want broader coverage without committing to the full deep suite.
+
+Benchmarks:
+
+- `smoke-node-library`
+- `smoke-node-json-cli`
+- `quick-node-cli`
+- `quick-python-primes`
+- `hourly-python-library`
+- `hourly-frontend-build`
+- `hourly-node-api`
+
+Why this suite exists:
+
+- adds cheap library-only and frontend build-only paths
+- adds a lightweight API/process-lifecycle path
+- gives broader stack coverage within an hour-ish budget
 
 ### Deep Coverage Suite
 
-Use this when you want broader confidence before merging meaningful Ralph changes.
+Use this when you want the broadest confidence before larger workflow changes.
 
 Benchmarks:
 
-- `prdtest04` Node Tiny CLI
-- `prdtest02` Python 99 Primes
-- `prdtest05` Node Tiny API
-- `prdtest03` C# In-Memory DB
-- `prdtest01` React Styled Hello
+- `smoke-node-library`
+- `smoke-node-json-cli`
+- `quick-node-cli`
+- `quick-python-primes`
+- `hourly-python-library`
+- `hourly-frontend-build`
+- `hourly-node-api`
+- `deep-dotnet-crud`
+- `deep-react-browser`
 
 Why this suite exists:
 
-- includes the quick suite
-- adds server/process lifecycle coverage
-- adds a deeper multi-story .NET task
-- adds a frontend task with more verification pressure
+- includes all cheaper layers first
+- adds deeper .NET workflow coverage
+- adds browser-heavier frontend verification pressure
 - should stay within roughly 2-3 hours on a healthy setup
 
-## What The Existing PRDs Test
+## What The Benchmarks Test
 
-- `prdtest04`: raw loop overhead and cheap verification
-- `prdtest02`: simple algorithmic CLI work with very low setup cost
-- `prdtest05`: process lifecycle, startup, tests, and run instructions
-- `prdtest03`: multi-story .NET workflow with repository structure and tests
-- `prdtest01`: frontend scaffold, interaction, and verification pressure
-
-## Are The Existing PRDs Good Enough?
-
-Yes, with caveats.
-
-They are good enough to keep as Ralph's core benchmark set because they are:
-
-- deterministic
-- recognizable
-- small enough to rerun often
-- varied across stacks and task shapes
-
-They are not enough to answer every question. The biggest gap is not the benchmark idea itself. The biggest gap is suite-level usage and comparison.
-
-That is why this repo now defines:
-
-- benchmark tiers
-- suite metadata
-- aggregate suite reporting
+- `smoke-node-library`: raw loop overhead with library-only work
+- `smoke-node-json-cli`: JSON parsing, file I/O, and focused tests
+- `quick-node-cli`: cheap CLI implementation and verification
+- `quick-python-primes`: cheap Python CLI and algorithmic correctness
+- `hourly-python-library`: Python library work without CLI or server scaffolding
+- `hourly-frontend-build`: frontend coding verified by test and build only
+- `hourly-node-api`: startup, run instructions, tests, and process lifecycle
+- `deep-dotnet-crud`: multi-story .NET workflow with tests and repo structure
+- `deep-react-browser`: frontend scaffold, interaction, and browser verification pressure
 
 ## Recommended Usage
 
-### For Quick Feedback
+### For Fastest Feedback
+
+Run the `smoke` suite after:
+
+- narrow prompt changes
+- prompt-context changes
+- tiny retry or loop-overhead changes
+
+### For Day-To-Day Benchmarking
 
 Run the `quick` suite after:
 
-- prompt changes
 - loop-controller changes
 - token-use optimizations
 - retry or stale-recovery changes
+- reflection, recipe, or strategy-memory changes
 
-If a change specifically targets startup, process handling, or run-instruction behavior, also run `prdtest05` even if it is not part of the default quick suite.
+### For Broader Confidence
 
-### For Deeper Confidence
+Run the `hourly` suite before:
+
+- changing verification defaults
+- changing process or startup handling
+- changing frontend verification expectations
+
+### For Largest Changes
 
 Run the `deep` suite before:
 
 - merging larger workflow changes
 - changing benchmark-affecting defaults
-- altering verification behavior
-- changing story-selection or progress-context logic
+- altering story-selection logic
+- altering progress-context logic
 
 ## Metrics That Matter Most
 
@@ -128,7 +163,7 @@ At minimum, compare:
 
 Useful later additions:
 
+- seeded repo edit benchmarks
 - suite regression thresholds
 - aggregate regressions by category
 - quality counters such as retries or reopened stories
-- repo-grounded benchmark projects outside the fixed PRD skill set

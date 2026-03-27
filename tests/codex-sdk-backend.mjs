@@ -60,10 +60,13 @@ function latestRunArtifacts(projectRoot) {
   assert.ok(metricsFile, "expected a metrics file");
   const metrics = JSON.parse(readFileSync(metricsFile, "utf-8"));
   const logFile = metricsFile.replace(/\.metrics\.json$/i, ".log");
+  const reflectionFile = metricsFile.replace(/\.metrics\.json$/i, ".reflection.json");
   return {
     metricsFile,
     metrics,
     logFile,
+    reflectionFile,
+    reflection: JSON.parse(readFileSync(reflectionFile, "utf-8")),
   };
 }
 
@@ -146,9 +149,14 @@ function runSdkSuccessSmoke() {
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /Build: story US-001 complete/);
-    const { metrics, logFile } = latestRunArtifacts(projectRoot);
+    const { metrics, logFile, reflection } = latestRunArtifacts(projectRoot);
     assert.equal(metrics.backend, "sdk");
     assert.equal(metrics.tokenStats.inputTokens, 120);
+    assert.equal(metrics.reflectionFile.endsWith(".reflection.json"), true);
+    assert.equal(reflection.storyId, "US-001");
+    assert.equal(reflection.status, "success");
+    assert.equal(reflection.backend, "sdk");
+    assert.equal(reflection.completed, true);
     assert.equal(readPrdStatus(projectRoot), "done");
     const logText = readFileSync(logFile, "utf-8");
     assert.match(logText, /backend: sdk/);
@@ -181,8 +189,10 @@ function runSdkCompletionHangSmoke() {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /Build: story US-001 complete/);
     assert.equal(readPrdStatus(projectRoot), "done");
-    const { metrics, logFile } = latestRunArtifacts(projectRoot);
+    const { metrics, logFile, reflection } = latestRunArtifacts(projectRoot);
     assert.equal(metrics.backend, "sdk");
+    assert.equal(reflection.status, "success");
+    assert.equal(reflection.completed, true);
     const logText = readFileSync(logFile, "utf-8");
     assert.match(logText, /turn completed: input=120 cached=20 output=15/);
     assert.match(logText, /session id: mock-thread/);
@@ -229,8 +239,10 @@ function runAutoFallbackSmoke() {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /falling back to CLI/i);
     assert.equal(readPrdStatus(projectRoot), "done");
-    const { metrics, logFile } = latestRunArtifacts(projectRoot);
+    const { metrics, logFile, reflection } = latestRunArtifacts(projectRoot);
     assert.equal(metrics.backend, "cli");
+    assert.equal(reflection.recoveryUsed, "sdk_fallback");
+    assert.equal(reflection.status, "success");
     const logText = readFileSync(logFile, "utf-8");
     assert.match(logText, /sdk startup error/i);
     assert.match(logText, /falling back to CLI/i);

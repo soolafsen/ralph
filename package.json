@@ -6,9 +6,11 @@
     "ralph": "bin/ralph"
   },
   "scripts": {
+    "bench:smoke": "node scripts/run-ralph-benchmark-suite.mjs --suite smoke",
     "bench:quick": "node scripts/run-ralph-benchmark-suite.mjs --suite quick",
+    "bench:hourly": "node scripts/run-ralph-benchmark-suite.mjs --suite hourly",
     "bench:deep": "node scripts/run-ralph-benchmark-suite.mjs --suite deep",
-    "test": "node tests/cli-smoke.mjs && node tests/process-helper.mjs && node tests/agent-loops.mjs && node tests/codex-sdk-backend.mjs",
+    "test": "node tests/cli-smoke.mjs && node tests/process-helper.mjs && node tests/agent-loops.mjs && node tests/codex-sdk-backend.mjs && node tests/recipe-memory.mjs && node tests/stuck-loop-detection.mjs",
     "benchmark:run": "node scripts/analyze-ralph-run.mjs",
     "benchmark:record": "node scripts/record-ralph-benchmark.mjs",
     "benchmark:compare": "node scripts/compare-ralph-benchmark.mjs",

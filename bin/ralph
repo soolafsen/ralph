@@ -85,7 +85,9 @@ function usage() {
 Commands:
   install [--skills] [--force] [--force-skills]  Copy .agents/ralph into the current repo
   prd ["<request>"] [--out path]      Generate a PRD (JSON) via agent
+  bench:smoke                         Run the smoke Ralph benchmark suite
   bench:quick                         Run the quick Ralph benchmark suite
+  bench:hourly                        Run the hourly Ralph benchmark suite
   bench:deep                          Run the deep Ralph benchmark suite
   ping                                Minimal agent health check
   doctor                              Check Ralph runner prerequisites
@@ -550,7 +552,7 @@ async function runInstallSkills() {
             ? path.join(home, ".local", "share", "opencode", "skills")
             : path.join(cwd, ".opencode", "skills");
 
-  const skillsToInstall = ["commit", "dev-browser", "prd", "prdtest01", "prdtest02", "prdtest03", "prdtest04", "prdtest05"];
+  const skillsToInstall = ["commit", "dev-browser", "prd", "prdtest01", "prdtest02", "prdtest03", "prdtest04", "prdtest05", "prdtest06", "prdtest07", "prdtest08", "prdtest09"];
   fs.mkdirSync(targetRoot, { recursive: true });
   const installed = [];
   const skipped = [];
@@ -748,8 +750,14 @@ async function main() {
     process.exit(ok ? 0 : 1);
   }
 
-  if (cmd === "bench:quick" || cmd === "bench:deep") {
-    const suiteId = cmd === "bench:quick" ? "quick" : "deep";
+  if (cmd === "bench:smoke" || cmd === "bench:quick" || cmd === "bench:hourly" || cmd === "bench:deep") {
+    const suiteId = cmd === "bench:smoke"
+      ? "smoke"
+      : cmd === "bench:hourly"
+        ? "hourly"
+        : cmd === "bench:quick"
+          ? "quick"
+          : "deep";
     const suiteRunner = path.join(repoRoot, "scripts", "run-ralph-benchmark-suite.mjs");
     if (!exists(suiteRunner)) {
       console.error(`Benchmark suite runner not found: ${suiteRunner}`);
