@@ -154,6 +154,39 @@ function runSdkSuccessSmoke() {
   }
 }
 
+function runSdkCompletionHangSmoke() {
+  if (process.platform !== "win32") {
+    console.log("Skipping Windows SDK completion-hang smoke test on non-Windows.");
+    return;
+  }
+  const projectRoot = setupTempProject();
+  try {
+    const result = run(process.execPath, [runnerPath, "build", "1", "--no-commit"], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        RALPH_ROOT: projectRoot,
+        RALPH_QUIET: "1",
+        RALPH_CODEX_BACKEND: "sdk",
+        RALPH_AGENT_KIND: "codex",
+        RALPH_AGENT_COMMAND_SOURCE: "map",
+        RALPH_TEST_CODEX_SDK_MOCK: "hang_after_complete",
+      },
+      timeout: 15000,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Build: story US-001 complete/);
+    assert.equal(readPrdStatus(projectRoot), "done");
+    const { metrics, logFile } = latestRunArtifacts(projectRoot);
+    assert.equal(metrics.backend, "sdk");
+    const logText = readFileSync(logFile, "utf-8");
+    assert.match(logText, /turn completed: input=120 cached=20 output=15/);
+    assert.match(logText, /session id: mock-thread/);
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+}
+
 function runAutoFallbackSmoke() {
   if (process.platform !== "win32") {
     console.log("Skipping Windows SDK fallback smoke test on non-Windows.");
@@ -205,6 +238,7 @@ function runAutoFallbackSmoke() {
 await runSelectionTests();
 runDoctorSmoke();
 runSdkSuccessSmoke();
+runSdkCompletionHangSmoke();
 runAutoFallbackSmoke();
 
 console.log("Codex SDK backend tests passed.");
