@@ -2,6 +2,19 @@
 
 This page holds the detailed runtime and mode reference that does not need to stay on the landing README.
 
+## Mode Chooser
+
+Use normal `ralph build` unless you have a clear reason not to.
+
+- Default build: use for most PRD-driven multi-story work.
+- `--tiny`: use when the work is genuinely very small and you want Ralph to stay compact without changing the normal loop shape.
+- `--barebones`: use when you want the most stripped-down loop and the lightest acceptable verification path.
+
+Short version:
+
+- `--tiny` changes prompt behavior.
+- `--barebones` changes loop behavior.
+
 ## Tiny Task Mode
 
 Tiny-task mode is designed for very small stories where the original Ralph prompt overhead is wasteful.
@@ -23,7 +36,7 @@ Practical effects of `--tiny`:
 - biases Codex toward the shortest valid implementation
 - reduces unnecessary scaffolding, ceremony, and extra documentation
 - skips progress snapshot context in the slimmer loop path
-- helps keep trivial tasks from getting over-engineered
+- helps keep trivial tasks from getting over-engineered while preserving the normal Ralph loop
 
 What `--tiny` does not do:
 
@@ -49,7 +62,16 @@ Practical effects of `--barebones`:
 - defaults build runs to one iteration unless you pass an explicit iteration count
 - biases the agent toward the smallest viable story implementation
 - avoids tests, browser checks, package installs, and README churn unless the story or quality gates actually require them
-- keeps the loop file-based and story-based like normal Ralph
+- keeps the loop file-based and story-based, but with a more aggressively minimal execution path
+
+## Install And Upgrade Notes
+
+Ralph can run from bundled defaults or from a repo-local `.agents/ralph` copy.
+
+- if a repo contains `.agents/ralph`, that local copy overrides the bundled global install for that repo
+- after upgrading the global CLI, run `ralph install --force` in repos that should pick up the refreshed local templates
+- `ralph install --skills` installs the bundled skills for the agent scope you choose
+- for Codex, the `prd` skill must exist before `ralph prd` can generate PRDs reliably
 
 ## Quiet Mode
 

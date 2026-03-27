@@ -19,7 +19,7 @@ That lets Ralph keep forward momentum without turning every feedback loop into a
 
 - `smoke` for a few-minute sanity check
 - `quick` for roughly 30-minute day-to-day feedback
-- `hourly` for broader confidence within an hour-ish budget
+- `hourly` for broader confidence while staying comfortably under an hour on Windows
 - `deep` for the broadest coverage before bigger loop changes
 
 ## Suites
@@ -68,13 +68,12 @@ Benchmarks:
 - `quick-python-primes`
 - `hourly-python-library`
 - `hourly-frontend-build`
-- `hourly-node-api`
 
 Why this suite exists:
 
 - adds cheap library-only and frontend build-only paths
-- adds a lightweight API/process-lifecycle path
-- gives broader stack coverage within an hour-ish budget
+- gives broader stack coverage without pulling in the slowest Windows process-lifecycle benchmark
+- aims to stay under 60 minutes, with roughly 45 minutes as the working target
 
 ### Deep Coverage Suite
 
@@ -137,6 +136,7 @@ Run the `hourly` suite before:
 - changing verification defaults
 - changing process or startup handling
 - changing frontend verification expectations
+- if you need the API/process-lifecycle benchmark too, use `deep`
 
 ### For Largest Changes
 

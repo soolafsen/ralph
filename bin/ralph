@@ -101,8 +101,8 @@ Options:
   --plan <path>                       Use a plan file as PRD input
   --out <path>                        Override PRD output path (prd command)
   --progress <path>                   Override progress log path
-  --tiny                              Force tiny-task prompt mode for build runs
-  --barebones                         Minimal single-story-biased build mode with the lightest acceptable verification
+  --tiny                              Keep the normal loop, but force the smaller-task prompt path
+  --barebones                         Minimal loop mode: single-story-biased with the lightest acceptable verification
   --quiet                             Terse terminal output; full logs stay on disk
   --show-browser                      For browser verification, allow a visible browser window instead of preferring headless checks
   --force-skills                      Reinstall bundled skills even if they exist
@@ -111,6 +111,8 @@ Options:
 Notes:
 - Uses local .agents/ralph if present; otherwise uses bundled defaults.
 - State and logs are written to .ralph/ in the project.
+- Normal build is the default for most Ralph work.
+- --tiny changes prompt behavior for very small tasks; --barebones is the more minimal loop mode.
 - Browser verification still happens by default for frontend work. --show-browser only changes browser visibility for those checks.
 - --barebones defaults build runs to one iteration unless you pass an explicit iteration count.
 `);

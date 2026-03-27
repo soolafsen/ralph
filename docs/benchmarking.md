@@ -65,11 +65,16 @@ Benchmarks:
 - `quick-python-primes`
 - `hourly-python-library`
 - `hourly-frontend-build`
-- `hourly-node-api`
 
 Target:
 
-- roughly an hour to 90 minutes
+- aim for roughly 45 minutes
+- keep it comfortably under 60 minutes on Windows
+
+Notes:
+
+- `hourly-node-api` stays in the benchmark catalog and the `deep` suite
+- the heavier API/process-lifecycle path was removed from `hourly` because it is the most likely suite-level time and timeout outlier on Windows
 
 ### `deep`
 
