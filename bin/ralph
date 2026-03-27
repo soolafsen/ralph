@@ -71,7 +71,7 @@ function checkForUpdate() {
   if (!process.stdout.isTTY || !process.stdin.isTTY) return null;
   if (process.env.RALPH_SKIP_UPDATE_CHECK === "1") return null;
   const { name, version } = readPackageMeta();
-  const result = spawnSync("npm", ["view", name, "version"], { encoding: "utf-8" });
+  const result = spawnSync("npm", ["view", name, "version"], withWindowsHide({ encoding: "utf-8" }));
   if (result.status !== 0) return null;
   const latest = String(result.stdout || "").trim();
   if (!latest) return null;
@@ -241,9 +241,14 @@ function resolveBashExecutable() {
   return "bash";
 }
 
+function withWindowsHide(options = {}) {
+  if (process.platform !== "win32") return options;
+  return { ...options, windowsHide: true };
+}
+
 function commandExists(command) {
   if (process.platform === "win32") {
-    return spawnSync("where", [command], { stdio: "ignore" }).status === 0;
+    return spawnSync("where", [command], withWindowsHide({ stdio: "ignore" })).status === 0;
   }
   return spawnSync(`command -v ${command}`, { shell: true, stdio: "ignore" }).status === 0;
 }
@@ -255,7 +260,7 @@ function commandOutput(command, args) {
       windowsHide: true,
     });
   }
-  return spawnSync(command, args, { encoding: "utf-8" });
+  return spawnSync(command, args, withWindowsHide({ encoding: "utf-8" }));
 }
 
 function resolveOptionalModule(moduleName) {
@@ -293,7 +298,7 @@ function runLoop(loopPath, loopArgs, options) {
   if (process.platform === "win32") {
     const nativeRunner = path.join(path.dirname(loopPath), "windows-runner.cjs");
     if (exists(nativeRunner)) {
-      return spawnSync(process.execPath, [nativeRunner, ...loopArgs], options);
+      return spawnSync(process.execPath, [nativeRunner, ...loopArgs], withWindowsHide(options));
     }
     const loopPathKeys = new Set([
       "RALPH_ROOT",
@@ -322,9 +327,9 @@ function runLoop(loopPath, loopArgs, options) {
           ]),
         )
       : options?.env;
-    return spawnSync(resolveBashExecutable(), bashArgs, { ...options, env });
+    return spawnSync(resolveBashExecutable(), bashArgs, withWindowsHide({ ...options, env }));
   }
-  return spawnSync(loopPath, loopArgs, options);
+  return spawnSync(loopPath, loopArgs, withWindowsHide(options));
 }
 
 async function resolvePrdPath({ cwd, explicitPath, label }) {
@@ -587,6 +592,7 @@ async function main() {
       outro("Updating...");
       const result = spawnSync("npm", ["i", "-g", `${updateInfo.name}@latest`], {
         stdio: "inherit",
+        ...(process.platform === "win32" ? { windowsHide: true } : {}),
       });
       process.exit(result.status ?? 1);
     } else {
@@ -643,7 +649,7 @@ async function main() {
     const codexPrdGlobal = path.join(home, ".codex", "skills", "prd");
     const codexVersion = commandOutput("codex", ["--version"]);
     const pythonVersion = commandOutput("python", ["--version"]);
-    const gitBashPythonVersion = spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], { encoding: "utf-8" });
+    const gitBashPythonVersion = spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], withWindowsHide({ encoding: "utf-8" }));
     const playwrightPackage = resolveOptionalModule("playwright");
     const codexBackend = await resolveCodexBackendDiagnostics();
     const checks = [
@@ -798,7 +804,7 @@ async function main() {
       'printf "AGENT_DROID_INTERACTIVE_CMD=%s\\n" "${AGENT_DROID_INTERACTIVE_CMD:-}"',
       'printf "AGENT_OPENCODE_INTERACTIVE_CMD=%s\\n" "${AGENT_OPENCODE_INTERACTIVE_CMD:-}"',
     ].join("; ");
-    const result = spawnSync("bash", ["-lc", bashCmd], { encoding: "utf-8" });
+    const result = spawnSync("bash", ["-lc", bashCmd], withWindowsHide({ encoding: "utf-8" }));
     if (result.status !== 0) {
       return {
         headless: defaults,
@@ -886,7 +892,7 @@ async function main() {
     const rendered = agentCmd.includes("{prompt}")
       ? agentCmd.replace(/\{prompt\}/g, escapePath(promptFile))
       : `cat ${escapePath(promptFile)} | ${agentCmd}`;
-    const result = spawnSync(rendered, { shell: true, encoding: "utf-8" });
+    const result = spawnSync(rendered, withWindowsHide({ shell: true, encoding: "utf-8" }));
     const output = `${result.stdout || ""}${result.stderr || ""}`;
     if (!output.includes("<end>pong</end>")) {
       console.error("Ping failed: missing <end>pong</end>.");
