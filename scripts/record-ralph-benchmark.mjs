@@ -9,6 +9,10 @@ const definitionsPath = path.join(repoRoot, "benchmarks", "definitions.json");
 const historyDir = path.join(repoRoot, "benchmarks", "history");
 const latestDir = path.join(repoRoot, "benchmarks", "latest");
 
+function withWindowsHide(options = {}) {
+  return process.platform === "win32" ? { ...options, windowsHide: true } : options;
+}
+
 function usage() {
   console.log("Usage: node scripts/record-ralph-benchmark.mjs --benchmark <id> [project-dir] [--run <run-id>] [--notes <text>]");
 }
@@ -70,8 +74,8 @@ function getBenchmarkDefinition(benchmarkId) {
 }
 
 function gitInfo() {
-  const branch = spawnSync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf-8" });
-  const commit = spawnSync("git", ["-C", repoRoot, "rev-parse", "HEAD"], { encoding: "utf-8" });
+  const branch = spawnSync("git", ["-C", repoRoot, "rev-parse", "--abbrev-ref", "HEAD"], withWindowsHide({ encoding: "utf-8" }));
+  const commit = spawnSync("git", ["-C", repoRoot, "rev-parse", "HEAD"], withWindowsHide({ encoding: "utf-8" }));
   return {
     branch: branch.status === 0 ? String(branch.stdout || "").trim() : "",
     commit: commit.status === 0 ? String(commit.stdout || "").trim() : "",

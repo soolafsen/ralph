@@ -162,6 +162,10 @@ function ensureFile(filePath, content) {
   }
 }
 
+function withWindowsHide(options = {}) {
+  return { ...options, windowsHide: true };
+}
+
 function escapeJsString(value) {
   return JSON.stringify(String(value));
 }
@@ -555,13 +559,13 @@ function appendRunSummary(line) {
 }
 
 function gitHead() {
-  const result = spawnSync("git", ["-C", rootDir, "rev-parse", "HEAD"], { encoding: "utf-8" });
+  const result = spawnSync("git", ["-C", rootDir, "rev-parse", "HEAD"], withWindowsHide({ encoding: "utf-8" }));
   return result.status === 0 ? String(result.stdout || "").trim() : "";
 }
 
 function gitCommitList(before, after) {
   if (!before || !after || before === after) return "";
-  const result = spawnSync("git", ["-C", rootDir, "log", "--oneline", `${before}..${after}`], { encoding: "utf-8" });
+  const result = spawnSync("git", ["-C", rootDir, "log", "--oneline", `${before}..${after}`], withWindowsHide({ encoding: "utf-8" }));
   return result.status === 0
     ? String(result.stdout || "").split(/\r?\n/).filter(Boolean).map((line) => `- ${line}`).join("\n")
     : "";
@@ -569,14 +573,14 @@ function gitCommitList(before, after) {
 
 function gitChangedFiles(before, after) {
   if (!before || !after || before === after) return "";
-  const result = spawnSync("git", ["-C", rootDir, "diff", "--name-only", before, after], { encoding: "utf-8" });
+  const result = spawnSync("git", ["-C", rootDir, "diff", "--name-only", before, after], withWindowsHide({ encoding: "utf-8" }));
   return result.status === 0
     ? String(result.stdout || "").split(/\r?\n/).filter(Boolean).map((line) => `- ${line}`).join("\n")
     : "";
 }
 
 function gitDirtyFiles() {
-  const result = spawnSync("git", ["-C", rootDir, "status", "--porcelain"], { encoding: "utf-8" });
+  const result = spawnSync("git", ["-C", rootDir, "status", "--porcelain"], withWindowsHide({ encoding: "utf-8" }));
   return result.status === 0
     ? String(result.stdout || "").split(/\r?\n/).filter(Boolean).map((line) => `- ${line.trim().slice(3)}`).join("\n")
     : "";

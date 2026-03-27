@@ -4,8 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+function withWindowsHide(options = {}) {
+  return process.platform === "win32" ? { ...options, windowsHide: true } : options;
+}
+
 function run(cmd, args, options = {}) {
-  const result = spawnSync(cmd, args, { stdio: "inherit", ...options });
+  const result = spawnSync(cmd, args, withWindowsHide({ stdio: "inherit", ...options }));
   if (result.status !== 0) {
     console.error(`Command failed: ${cmd} ${args.join(" ")}`);
     process.exit(result.status ?? 1);

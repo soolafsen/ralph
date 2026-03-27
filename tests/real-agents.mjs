@@ -7,8 +7,12 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoRoot, "bin", "ralph");
 
+function withWindowsHide(options = {}) {
+  return process.platform === "win32" ? { ...options, windowsHide: true } : options;
+}
+
 function run(cmd, args, options = {}) {
-  const result = spawnSync(cmd, args, { stdio: "inherit", ...options });
+  const result = spawnSync(cmd, args, withWindowsHide({ stdio: "inherit", ...options }));
   if (result.status !== 0) {
     throw new Error(`Command failed: ${cmd} ${args.join(" ")}`);
   }
@@ -83,7 +87,7 @@ function assertAllStoriesComplete(prdPath) {
 }
 
 function assertCommitted(cwd) {
-  const result = spawnSync("git", ["rev-list", "--count", "HEAD"], { cwd, encoding: "utf-8" });
+  const result = spawnSync("git", ["rev-list", "--count", "HEAD"], withWindowsHide({ cwd, encoding: "utf-8" }));
   if (result.status !== 0) {
     throw new Error("Failed to read git history.");
   }

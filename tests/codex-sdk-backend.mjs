@@ -12,10 +12,14 @@ const runnerPath = path.join(repoRoot, ".agents", "ralph", "windows-runner.cjs")
 const require = createRequire(import.meta.url);
 const { resolveCodexBackend } = require(path.join(repoRoot, ".agents", "ralph", "codex-backend.cjs"));
 
+function withWindowsHide(options = {}) {
+  return process.platform === "win32" ? { ...options, windowsHide: true } : options;
+}
+
 function run(cmd, args, options = {}) {
   const result = spawnSync(cmd, args, {
     encoding: "utf-8",
-    ...options,
+    ...withWindowsHide(options),
   });
   return {
     ...result,
