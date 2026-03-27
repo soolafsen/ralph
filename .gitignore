@@ -18,6 +18,8 @@ pnpm-debug.log*
 
 # Temp
 .tmp/
+benchmarks/latest/
+benchmarks/workspaces/
 
 # Coverage / build
 coverage/

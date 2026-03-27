@@ -5,35 +5,103 @@
       "name": "PRDTEST01 React Styled Hello",
       "skill": "prdtest01",
       "expectedPrdFilename": "prdtest01-react-styled-hello.json",
-      "notes": "Small React frontend benchmark"
+      "tier": "deep",
+      "storyCount": 3,
+      "estimatedCost": "medium",
+      "focus": [
+        "frontend scaffold",
+        "ui interaction",
+        "verification",
+        "readme instructions"
+      ],
+      "notes": "Small React frontend benchmark with styling and frontend verification pressure"
     },
     {
       "id": "prdtest02",
       "name": "PRDTEST02 Python 99 Primes",
       "skill": "prdtest02",
       "expectedPrdFilename": "prdtest02-python-99-primes.json",
-      "notes": "Small Python CLI benchmark"
+      "tier": "quick",
+      "storyCount": 3,
+      "estimatedCost": "low",
+      "focus": [
+        "tiny cli",
+        "algorithm correctness",
+        "cheap verification"
+      ],
+      "notes": "Small Python CLI benchmark with low setup cost"
     },
     {
       "id": "prdtest03",
       "name": "PRDTEST03 CSharp InMemory DB",
       "skill": "prdtest03",
       "expectedPrdFilename": "prdtest03-csharp-inmemory-db.json",
-      "notes": "Small .NET in-memory CRUD benchmark"
+      "tier": "deep",
+      "storyCount": 4,
+      "estimatedCost": "medium",
+      "focus": [
+        "dotnet scaffold",
+        "in-memory crud",
+        "tests",
+        "readme instructions"
+      ],
+      "notes": "Small .NET in-memory CRUD benchmark with multi-story structure"
     },
     {
       "id": "prdtest04",
       "name": "PRDTEST04 Node Tiny CLI",
       "skill": "prdtest04",
       "expectedPrdFilename": "prdtest04-node-tiny-cli.json",
-      "notes": "Low-token overhead benchmark"
+      "tier": "quick",
+      "storyCount": 3,
+      "estimatedCost": "very_low",
+      "focus": [
+        "minimal overhead",
+        "node cli",
+        "cheap verification"
+      ],
+      "notes": "Low-token overhead benchmark for prompt and loop efficiency"
     },
     {
       "id": "prdtest05",
       "name": "PRDTEST05 Node Tiny API",
       "skill": "prdtest05",
       "expectedPrdFilename": "prdtest05-node-tiny-api.json",
-      "notes": "Server/process lifecycle benchmark"
+      "tier": "quick",
+      "storyCount": 4,
+      "estimatedCost": "medium",
+      "focus": [
+        "server startup",
+        "process lifecycle",
+        "api tests",
+        "run instructions"
+      ],
+      "notes": "Server/process lifecycle benchmark with lightweight API behavior"
+    }
+  ],
+  "suites": [
+    {
+      "id": "quick",
+      "name": "Quick Feedback Suite",
+      "benchmarkIds": [
+        "prdtest04",
+        "prdtest02"
+      ],
+      "targetMaxMinutes": 20,
+      "notes": "Fast loop feedback covering tiny overhead and cheap CLI behavior with the best chance of staying under 20 minutes."
+    },
+    {
+      "id": "deep",
+      "name": "Deep Coverage Suite",
+      "benchmarkIds": [
+        "prdtest04",
+        "prdtest02",
+        "prdtest05",
+        "prdtest03",
+        "prdtest01"
+      ],
+      "targetMaxMinutes": 180,
+      "notes": "Broader coverage across frontend, .NET, Python, Node CLI, and lightweight API work, intended to stay within roughly 2-3 hours."
     }
   ]
 }

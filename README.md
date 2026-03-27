@@ -123,6 +123,13 @@ Benchmark meanings:
 - `prdtest04`: intentionally cheap Node CLI benchmark for token and overhead checks
 - `prdtest05`: lightweight Node API benchmark for startup, run-instruction, and process-lifecycle checks
 
+Benchmark suites:
+
+- `quick`: `prdtest04`, `prdtest02`
+- `deep`: `prdtest04`, `prdtest02`, `prdtest05`, `prdtest03`, `prdtest01`
+
+The `quick` suite is for fast feedback after Ralph changes and is intended to stay under roughly 20 minutes. The `deep` suite is for broader confidence before merging meaningful workflow changes and is intended to stay within roughly 2-3 hours.
+
 Benchmark history in this repo uses **price-ish tokens** as the primary metric:
 
 - `price-ish = uncached input + output + reasoning`
@@ -485,3 +492,34 @@ Analyze a Ralph run from a real project:
 ```bash
 npm run benchmark:run -- C:\path\to\project
 ```
+
+Record a benchmark run into benchmark history:
+
+```bash
+npm run benchmark:record -- --benchmark prdtest04 C:\path\to\project
+```
+
+Compare history for one benchmark:
+
+```bash
+npm run benchmark:compare -- --benchmark prdtest04
+```
+
+Compare the latest results for a benchmark suite:
+
+```bash
+npm run benchmark:suite -- --suite quick
+npm run benchmark:suite -- --suite deep
+```
+
+Run the benchmark suites end-to-end:
+
+```bash
+ralph bench:quick
+ralph bench:deep
+```
+
+Benchmark notes and suite definitions live in:
+
+- `benchmarks/definitions.json`
+- `benchmarks/README.md`

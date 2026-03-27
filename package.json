@@ -6,8 +6,13 @@
     "ralph": "bin/ralph"
   },
   "scripts": {
+    "bench:quick": "node scripts/run-ralph-benchmark-suite.mjs --suite quick",
+    "bench:deep": "node scripts/run-ralph-benchmark-suite.mjs --suite deep",
     "test": "node tests/cli-smoke.mjs && node tests/process-helper.mjs && node tests/agent-loops.mjs && node tests/codex-sdk-backend.mjs",
     "benchmark:run": "node scripts/analyze-ralph-run.mjs",
+    "benchmark:record": "node scripts/record-ralph-benchmark.mjs",
+    "benchmark:compare": "node scripts/compare-ralph-benchmark.mjs",
+    "benchmark:suite": "node scripts/compare-ralph-suite.mjs",
     "test:real": "node tests/real-agents.mjs",
     "test:ping": "node tests/agent-ping.mjs"
   },
