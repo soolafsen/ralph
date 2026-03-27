@@ -61,6 +61,7 @@ function setupTempProject() {
   writeFileSync(path.join(base, ".agents", "tasks", "prd.json"), `${JSON.stringify(prd, null, 2)}\n`);
 
   const mockAgentPath = path.join(base, "mock-cli-agent.js");
+  const verificationCommand = "npm test -- --runInBand --reporter=spec --grep recipe-memory-smoke --project recipe-memory-browser --config tests/fixtures/recipe-memory.config.json --coverage --coverageReporters=text-summary";
   writeFileSync(mockAgentPath, [
     "#!/usr/bin/env node",
     "const fs = require(\"fs\");",
@@ -84,13 +85,13 @@ function setupTempProject() {
     "  \"Run: \" + runId + \" (iteration \" + iteration + \")\",",
     "  \"No-commit: true\",",
     "  \"Verification:\",",
-    "  \"- npm test -> PASS\",",
+    `  "- ${verificationCommand} -> PASS",`,
     "  \"Files changed:\",",
     "  \"- src/\" + storyId + \".txt\",",
     "  \"Outcome:\",",
     "  \"- Completed \" + storyId,",
     "  \"Notes:\",",
-    "  \"- npm test is a reliable focused verification command in this repo.\",",
+    `  "- ${verificationCommand} is a reliable focused verification command in this repo.",`,
     "  \"---\",",
     "  \"\",",
     "].join(\"\\n\");",
@@ -105,7 +106,7 @@ function setupTempProject() {
     "",
   ].join("\n"));
 
-  return { base, mockAgentPath };
+  return { base, mockAgentPath, verificationCommand };
 }
 
 function findSingleFile(dirPath, pattern) {
@@ -121,6 +122,7 @@ try {
     env: {
       ...process.env,
       AGENT_CMD: "node mock-cli-agent.js {prompt}",
+      RECIPES_CONTEXT_MAX_BYTES: "256",
     },
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -129,7 +131,7 @@ try {
   const reflectionFiles = readdirSync(runsDir).filter((name) => name.endsWith(".reflection.json"));
   assert.equal(reflectionFiles.length, 3);
 
-  const recipePath = path.join(projectRoot, ".ralph", "knowledge", "recipes", "fallback-test-npm-test.json");
+  const recipePath = findSingleFile(path.join(projectRoot, ".ralph", "knowledge", "recipes"), /^fallback-test-.*\.json$/);
   const recipe = JSON.parse(readFileSync(recipePath, "utf-8"));
   assert.equal(recipe.kind, "fallback_test_command");
   assert.equal(recipe.successCount, 3);
@@ -147,6 +149,9 @@ try {
   assert.match(promptText, /## Strategy Memory/);
   assert.match(promptText, /## Backpressure Hints/);
   assert.match(promptText, /fallback_test_command: Final verification when this repo needs a focused test command\./);
+  assert.match(promptText, /2 success, 1 reuse/);
+  assert.match(promptText, /2 samples/);
+  assert.match(promptText, /trimmed to fit 256-byte budget/);
 } finally {
   rmSync(projectRoot, { recursive: true, force: true });
 }

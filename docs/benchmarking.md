@@ -102,6 +102,13 @@ ralph bench:hourly
 ralph bench:deep
 ```
 
+If Windows leaves a benchmark workspace locked after a failed or interrupted suite, you can rerun a suite against a fresh workspace root:
+
+```bash
+set RALPH_BENCHMARK_WORKSPACE_ROOT=C:\temp\ralph-bench-workspaces
+npm run bench:hourly
+```
+
 Analyze a real project run:
 
 ```bash

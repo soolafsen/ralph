@@ -145,3 +145,25 @@ Ralph writes loop state to `.ralph/`:
 Templates live in `.agents/ralph/`.
 
 PRDs live in `.agents/tasks/`.
+
+## Context Budgets
+
+This fork now applies byte caps to the injected loop context blocks so recipe, strategy, and progress memory do not grow unchecked across iterations.
+
+Defaults:
+
+```sh
+PROGRESS_CONTEXT_MAX_BYTES=1600
+RECIPES_CONTEXT_MAX_BYTES=1200
+STRATEGY_CONTEXT_MAX_BYTES=700
+RECIPES_CONTEXT_MAX_COUNT=3
+RECIPE_CONTEXT_MAX_STEPS=2
+STRATEGY_CONTEXT_MIN_SAMPLES=2
+```
+
+Practical effects:
+
+- progress snapshots are trimmed to a fixed byte budget instead of expanding with the full log tail
+- recipe injection keeps only the top-ranked trusted recipes and only the first few steps from each one
+- strategy memory stays out of prompts until it has at least a small amount of evidence
+- trimmed snapshots include a short note when Ralph had to cut context to fit budget

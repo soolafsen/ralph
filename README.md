@@ -28,6 +28,7 @@ Compared with the upstream Ralph flow, this fork adds or changes:
 - Bash fallback handling for helper scripts and compatibility paths
 - Codex PRD fixes so `ralph prd` uses a one-shot `codex exec` path instead of interactive prompt injection
 - slimmer build prompts with a compact progress snapshot instead of feeding large context every run
+- budgeted progress, recipe, and strategy snapshots so learned context stays useful without growing unchecked
 - compact bundled PRD generation so build runs carry less narrative overhead
 - compact progress snapshots and per-run metrics so prompt growth and hot spots are visible
 - automatic stale story recovery defaults

@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const definitionsPath = path.join(repoRoot, "benchmarks", "definitions.json");
-const workspaceRoot = path.join(repoRoot, "benchmarks", "workspaces");
+const workspaceRoot = process.env.RALPH_BENCHMARK_WORKSPACE_ROOT
+  ? path.resolve(process.env.RALPH_BENCHMARK_WORKSPACE_ROOT)
+  : path.join(repoRoot, "benchmarks", "workspaces");
 const binPath = path.join(repoRoot, "bin", "ralph");
 const recordScript = path.join(repoRoot, "scripts", "record-ralph-benchmark.mjs");
 const compareSuiteScript = path.join(repoRoot, "scripts", "compare-ralph-suite.mjs");

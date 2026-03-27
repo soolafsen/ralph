@@ -65,6 +65,12 @@ const quietMode = String(process.env.RALPH_QUIET || "0") === "1";
 const staleSeconds = Number(process.env.STALE_SECONDS || "300");
 const progressTailLines = Number(process.env.PROGRESS_TAIL_LINES || "20");
 const progressContextEntryCount = Math.max(1, Number(process.env.PROGRESS_CONTEXT_ENTRY_COUNT || "1"));
+const progressContextMaxBytes = Math.max(256, Number(process.env.PROGRESS_CONTEXT_MAX_BYTES || "1600"));
+const recipesContextMaxBytes = Math.max(256, Number(process.env.RECIPES_CONTEXT_MAX_BYTES || "1200"));
+const strategyContextMaxBytes = Math.max(256, Number(process.env.STRATEGY_CONTEXT_MAX_BYTES || "700"));
+const recipesContextMaxCount = Math.max(1, Number(process.env.RECIPES_CONTEXT_MAX_COUNT || "3"));
+const recipeContextMaxSteps = Math.max(1, Number(process.env.RECIPE_CONTEXT_MAX_STEPS || "2"));
+const strategyContextMinSamples = Math.max(1, Number(process.env.STRATEGY_CONTEXT_MIN_SAMPLES || "2"));
 const tinyTaskStoryMax = Number(process.env.TINY_TASK_STORY_MAX || "3");
 const tinyTaskModeOverride = process.env.TINY_TASK_MODE_OVERRIDE || "";
 const barebonesModeOverride = process.env.BAREBONES_MODE_OVERRIDE || "";
@@ -181,6 +187,48 @@ function measureText(text) {
     lines: value ? value.split(/\r?\n/).length : 0,
     words: trimmed ? trimmed.split(/\s+/).length : 0,
   };
+}
+
+function byteLength(value) {
+  return Buffer.byteLength(String(value || ""), "utf-8");
+}
+
+function truncateTextByBytes(value, maxBytes) {
+  const text = String(value || "");
+  if (maxBytes <= 0 || byteLength(text) <= maxBytes) return text;
+  const suffix = "...";
+  let end = text.length;
+  while (end > 0) {
+    const next = `${text.slice(0, end).trimEnd()}${suffix}`;
+    if (byteLength(next) <= maxBytes) return next;
+    end -= 1;
+  }
+  return suffix.slice(0, Math.max(0, maxBytes));
+}
+
+function fitContextBlock(title, bodyText, maxBytes) {
+  const header = `# ${title}\n\n`;
+  const normalizedBody = String(bodyText || "").trim() || "(none)";
+  const full = `${header}${normalizedBody}\n`;
+  if (byteLength(full) <= maxBytes) return full;
+
+  const lines = normalizedBody.split(/\r?\n/).filter((line, index, arr) => line || index < arr.length - 1);
+  const kept = [];
+  for (const line of lines) {
+    const trimmedSummary = `(trimmed to fit ${formatCount(maxBytes)}-byte budget; ${kept.length + 1}/${lines.length} lines shown)`;
+    const candidate = `${header}${[...kept, line].join("\n")}\n${trimmedSummary}\n`;
+    if (byteLength(candidate) > maxBytes) break;
+    kept.push(line);
+  }
+
+  const summary = `(trimmed to fit ${formatCount(maxBytes)}-byte budget; ${Math.max(1, kept.length)}/${lines.length} lines shown)`;
+  if (!kept.length) {
+    const available = Math.max(8, maxBytes - byteLength(`${header}\n${summary}\n`));
+    const firstLine = truncateTextByBytes(lines[0] || normalizedBody, available);
+    return `${header}${firstLine}\n${summary}\n`;
+  }
+
+  return `${header}${kept.join("\n")}\n${summary}\n`;
 }
 
 function stageHelperWrappers() {
@@ -615,9 +663,8 @@ function scoreRecipeForStory(recipe, storyText, hasPackageJson) {
 }
 
 function buildRecipesContext(dstPath, storyTitle, storyBlock) {
-  let output = "# Trusted Recipes\n\n";
   if (!exists(recipesDir)) {
-    output += "(none)\n";
+    const output = fitContextBlock("Trusted Recipes", "(none)", recipesContextMaxBytes);
     fs.writeFileSync(dstPath, output);
     return measureText(output);
   }
@@ -629,11 +676,11 @@ function buildRecipesContext(dstPath, storyTitle, storyBlock) {
     .map((recipe) => ({ recipe, score: scoreRecipeForStory(recipe, storyText, hasPackageJson) }))
     .filter((item) => item.score >= 2)
     .sort((a, b) => b.score - a.score || String(a.recipe.id).localeCompare(String(b.recipe.id)))
-    .slice(0, 3)
+    .slice(0, recipesContextMaxCount)
     .map(({ recipe }) => recipe);
 
   if (!recipes.length) {
-    output += "(none)\n";
+    const output = fitContextBlock("Trusted Recipes", "(none)", recipesContextMaxBytes);
     fs.writeFileSync(dstPath, output);
     return measureText(output);
   }
@@ -641,11 +688,17 @@ function buildRecipesContext(dstPath, storyTitle, storyBlock) {
   const lines = [];
   for (const recipe of recipes) {
     lines.push(`- ${recipe.kind}: ${recipe.trigger}`);
-    for (const step of recipe.steps || []) {
-      lines.push(`  steps: ${step}`);
+    const confidence = [];
+    if (Number(recipe.successCount || 0) > 0) confidence.push(`${formatCount(Number(recipe.successCount || 0))} success`);
+    if (Number(recipe.reuseSuccessCount || 0) > 0) confidence.push(`${formatCount(Number(recipe.reuseSuccessCount || 0))} reuse`);
+    if (confidence.length) lines.push(`  evidence: ${confidence.join(", ")}`);
+    const steps = Array.isArray(recipe.steps) ? recipe.steps : [];
+    for (const step of steps.slice(0, recipeContextMaxSteps)) {
+      lines.push(`  do: ${step}`);
     }
+    if (steps.length > recipeContextMaxSteps) lines.push(`  do: (+${steps.length - recipeContextMaxSteps} more omitted)`);
   }
-  output += `${lines.join("\n")}\n`;
+  const output = fitContextBlock("Trusted Recipes", lines.join("\n"), recipesContextMaxBytes);
   fs.writeFileSync(dstPath, output);
   return measureText(output);
 }
@@ -765,11 +818,17 @@ function updateStrategyMemory(reflection, tinyTaskMode, barebonesMode) {
 function formatStrategyLine(key, bucket) {
   const success = Number(bucket?.successCount || 0);
   const failure = Number(bucket?.failureCount || 0);
-  return `- ${key}: success ${success}, failure ${failure}, avg ${Math.round(Number(bucket?.avgDurationMs || 0) / 1000)}s, avg ${formatCount(Number(bucket?.avgPriceishTokens || 0))} price-ish tokens`;
+  const samples = Number(bucket?.samples || 0);
+  const total = Math.max(1, success + failure);
+  const winRate = Math.round((success / total) * 100);
+  return `- ${key}: ${winRate}% win, ${samples} samples, avg ${Math.round(Number(bucket?.avgDurationMs || 0) / 1000)}s, avg ${formatCount(Number(bucket?.avgPriceishTokens || 0))} tokens`;
+}
+
+function strategyHasSignal(bucket) {
+  return Number(bucket?.samples || 0) >= strategyContextMinSamples;
 }
 
 function buildStrategyContext(dstPath, storyTitle, storyBlock, tinyTaskMode, barebonesMode) {
-  let output = "# Strategy Memory\n\n";
   const stats = readStrategyStats();
   const text = `${storyTitle || ""}\n${storyBlock || ""}`.toLowerCase();
   const keys = [];
@@ -782,13 +841,9 @@ function buildStrategyContext(dstPath, storyTitle, storyBlock, tinyTaskMode, bar
   }
   const lines = Array.from(new Set(keys))
     .map((key) => ({ key, bucket: stats.strategies[key] }))
-    .filter((item) => item.bucket && Number(item.bucket.samples || 0) > 0)
+    .filter((item) => strategyHasSignal(item.bucket))
     .map((item) => formatStrategyLine(item.key, item.bucket));
-  if (!lines.length) {
-    output += "(none)\n";
-  } else {
-    output += `${lines.join("\n")}\n`;
-  }
+  const output = fitContextBlock("Strategy Memory", lines.length ? lines.join("\n") : "(none)", strategyContextMaxBytes);
   fs.writeFileSync(dstPath, output);
   return measureText(output);
 }
@@ -797,23 +852,23 @@ function buildBackpressureHints(storyTitle, storyBlock, tinyTaskMode, barebonesM
   const stats = readStrategyStats().strategies || {};
   const text = `${storyTitle || ""}\n${storyBlock || ""}`.toLowerCase();
   const hints = [];
-  if (tinyTaskMode === "true" && stats.tiny_mode && Number(stats.tiny_mode.successCount || 0) >= Number(stats.tiny_mode.failureCount || 0)) {
+  if (tinyTaskMode === "true" && strategyHasSignal(stats.tiny_mode) && Number(stats.tiny_mode.successCount || 0) >= Number(stats.tiny_mode.failureCount || 0)) {
     hints.push("Tiny-mode has been acceptable more often than not in this repo; keep verification narrow unless the story or quality gates force more.");
   }
-  if (barebonesMode === "true" && stats.barebones_mode && Number(stats.barebones_mode.successCount || 0) >= Number(stats.barebones_mode.failureCount || 0)) {
+  if (barebonesMode === "true" && strategyHasSignal(stats.barebones_mode) && Number(stats.barebones_mode.successCount || 0) >= Number(stats.barebones_mode.failureCount || 0)) {
     hints.push("Barebones mode has been viable here; prefer one decisive check over layered validation.");
   }
   if (/\b(frontend|browser|ui|page|screen|component|visual)\b/.test(text)) {
     const browser = stats.browser_verification;
-    if (browser && Number(browser.successCount || 0) > Number(browser.failureCount || 0)) {
+    if (strategyHasSignal(browser) && Number(browser.successCount || 0) > Number(browser.failureCount || 0)) {
       hints.push("Browser verification has paid off on similar stories here; use it when the change is user-visible.");
     }
-    if (browser && Number(browser.failureCount || 0) >= Math.max(2, Number(browser.successCount || 0))) {
+    if (strategyHasSignal(browser) && Number(browser.failureCount || 0) >= Math.max(2, Number(browser.successCount || 0))) {
       hints.push("Browser verification has been flaky here; fail fast on repeated readiness/startup issues instead of drifting into retries.");
     }
   } else {
     const backend = stats.backend_path;
-    if (backend && Number(backend.successCount || 0) >= Number(backend.failureCount || 0)) {
+    if (strategyHasSignal(backend) && Number(backend.successCount || 0) >= Number(backend.failureCount || 0)) {
       hints.push("Focused backend verification has been sufficient more often than not; escalate to broader checks only when the first pass or quality gates demand it.");
     }
   }
@@ -821,14 +876,13 @@ function buildBackpressureHints(storyTitle, storyBlock, tinyTaskMode, barebonesM
 }
 
 function buildProgressContext(dstPath, tinyMode) {
-  let output = "# Progress Snapshot\n\n";
   if (tinyMode === "true") {
-    output += "(skip for tiny task)\n";
+    const output = fitContextBlock("Progress Snapshot", "(skip for tiny task)", progressContextMaxBytes);
     fs.writeFileSync(dstPath, output);
     return measureText(output);
   }
   if (!exists(progressPath)) {
-    output += "(none)\n";
+    const output = fitContextBlock("Progress Snapshot", "(none)", progressContextMaxBytes);
     fs.writeFileSync(dstPath, output);
     return measureText(output);
   }
@@ -855,7 +909,7 @@ function buildProgressContext(dstPath, tinyMode) {
   if (!text) {
     text = lines.slice(-progressTailLines).join("\n").trim() || "(none)";
   }
-  output += `${text}\n`;
+  const output = fitContextBlock("Progress Snapshot", text, progressContextMaxBytes);
   fs.writeFileSync(dstPath, output);
   return measureText(output);
 }
