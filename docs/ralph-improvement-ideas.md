@@ -227,3 +227,329 @@ They are about strengthening the single-agent loop with:
 - better durable project knowledge
 - better learning from repeated failures
 - tighter feedback from benchmarks back into harness design
+
+## GitHub Memory Systems Shortlist
+
+This section is a practical shortlist of starred GitHub projects worth studying for Ralph, but it is intentionally not Ralph-only.
+
+Use it as:
+
+- a Ralph improvement note
+- a broader reference for future harnesses, assistants, and agent backends
+- a filter for "what looks real enough to borrow from now"
+
+Selection rule:
+
+- GitHub repos with visible star traction
+- useful now for direct adoption or for stealing ideas
+- biased toward systems with concrete code, docs, and architecture signals rather than benchmark-only claims
+
+Snapshot date:
+
+- March 28, 2026
+
+### 1. `mem0ai/mem0`
+
+Repo:
+
+- <https://github.com/mem0ai/mem0>
+
+Where useful:
+
+- general-purpose memory platforms
+- future general-purpose agent platforms
+- assistant backends with many users, sessions, or tools
+- Ralph only if it grows into a service-backed or multi-user harness
+
+How useful:
+
+- strongest candidate here for "memory as a productized layer"
+- useful reference for APIs, extraction pipelines, memory typing, and integration surface
+- less interesting for Ralph's current local file-first loop than for a hosted successor
+
+Impact on performance, quality, and cost:
+
+- performance: likely adds write/read latency and network dependency compared with Ralph's current file memory, but scales better once memory volume grows
+- quality: potentially strong improvement in recall quality and personalization if the retrieval policy is disciplined
+- cost: medium to high relative to Ralph today because it pushes toward embeddings, storage, and hosted infra rather than cheap local state
+
+Evaluation:
+
+- soon for a broader Ralph successor
+- maybe for current Ralph
+
+### 2. `supermemoryai/supermemory`
+
+Repo:
+
+- <https://github.com/supermemoryai/supermemory>
+
+Where useful:
+
+- cross-client memory layers
+- coding assistants
+- MCP-connected tools
+- future Ralph variants that want shared memory across clients or sessions
+
+How useful:
+
+- good reference for context injection, project scoping, and memory plus profile retrieval in one interface
+- useful if Ralph eventually wants to serve memory to Codex, Claude Code, Cursor, or similar clients through a shared layer
+- less compelling if the goal stays strictly local and file-native
+
+Impact on performance, quality, and cost:
+
+- performance: can reduce prompt waste by returning compact profile plus recall context, but adds another service hop
+- quality: likely good for user/project continuity, especially across separate tools
+- cost: medium to high depending on hosted usage; more expensive than Ralph's current flat-file state model
+
+Evaluation:
+
+- soon for any shared-memory future harness
+- maybe for current Ralph
+
+### 3. `letta-ai/letta`
+
+Repo:
+
+- <https://github.com/letta-ai/letta>
+
+Where useful:
+
+- full agent runtimes
+- long-running stateful agents
+- richer agent runtimes with tool use, internal state, and memory policies
+- future harnesses that want memory tightly coupled to an agent runtime
+
+How useful:
+
+- best studied as a full runtime, not as a drop-in memory library
+- useful ideas around state management, agent continuity, and memory lifecycle
+- for Ralph specifically, the value is architectural inspiration, not direct adoption
+
+Impact on performance, quality, and cost:
+
+- performance: heavier than Ralph's current loop; more runtime machinery and more state management overhead
+- quality: can improve consistency in long-running tasks where agent state must persist in a more structured way
+- cost: medium to high in implementation complexity and operator burden
+
+Evaluation:
+
+- maybe for current Ralph
+- soon for a future richer harness if Ralph outgrows the simple single-agent loop
+
+### 4. `MemTensor/MemOS`
+
+Repo:
+
+- <https://github.com/MemTensor/MemOS>
+
+Where useful:
+
+- layered memory architectures
+- systems that want multiple memory tiers
+- future harnesses with explicit skill memory or reusable learned procedures
+- Ralph if it starts separating facts, procedures, and task traces more deliberately
+
+How useful:
+
+- strong source of ideas for memory layering, memory routing, and "skill memory"
+- especially relevant to Ralph's current direction because Ralph already distinguishes durable guidance from transient run state
+- likely better to steal concepts than to adopt wholesale
+
+Impact on performance, quality, and cost:
+
+- performance: additional routing and indexing logic adds overhead, but can improve retrieval precision if done conservatively
+- quality: high upside if memory classes are kept explicit and small; low upside if it turns into memory sprawl
+- cost: medium due to added conceptual and implementation complexity
+
+Evaluation:
+
+- soon for current Ralph as a design influence
+- soon for future harnesses
+
+### 5. `CaviraOSS/OpenMemory`
+
+Repo:
+
+- <https://github.com/CaviraOSS/OpenMemory>
+
+Where useful:
+
+- self-hosted memory services
+- coding-assistant memory
+- local or self-hosted memory servers
+- future Ralph variants that want explainable recall and typed memory sectors
+
+How useful:
+
+- one of the better repos to steal ideas from for a practical harness
+- useful for memory categorization, explainable retrieval, and migration thinking from simpler memory stores
+- relevant to Ralph if you want better retrieval discipline without turning the whole system into a heavyweight runtime
+
+Impact on performance, quality, and cost:
+
+- performance: moderate overhead from richer indexing and retrieval logic
+- quality: good upside because typed memory and explainability can reduce noisy recall
+- cost: medium; more moving parts than Ralph today, but still in a range that could be justified
+
+Evaluation:
+
+- soon for current Ralph as an idea source
+- soon for future harnesses
+
+### 6. `agentscope-ai/ReMe`
+
+Repo:
+
+- <https://github.com/agentscope-ai/ReMe>
+
+Where useful:
+
+- file-first memory architectures
+- file-based or hybrid memory systems
+- single-agent harnesses
+- Ralph specifically
+
+How useful:
+
+- probably the closest conceptual match to Ralph on this list
+- useful because it treats memory as structured files such as `MEMORY.md`, journals, and compacted histories instead of only hidden vector storage
+- good source for compaction, summarization, and hybrid retrieval patterns that preserve debuggability
+
+Impact on performance, quality, and cost:
+
+- performance: low to medium overhead; cheaper than service-backed memory systems and still compatible with local execution
+- quality: strong likely upside for longer runs if compaction and recall stay scoped and auditable
+- cost: low to medium; fits Ralph's current architecture better than most alternatives here
+
+Evaluation:
+
+- now for current Ralph
+- soon for future harnesses
+
+### 7. `basicmachines-co/basic-memory`
+
+Repo:
+
+- <https://github.com/basicmachines-co/basic-memory>
+
+Where useful:
+
+- local-first human-readable memory
+- local-first assistants
+- repos where humans and agents should both read the memory directly
+- Ralph specifically
+
+How useful:
+
+- very good fit if the goal is "simple, inspectable, Markdown-native memory"
+- useful for keeping the memory system legible and easy to repair by hand
+- good counterweight against overengineering Ralph into a database-heavy memory platform
+
+Impact on performance, quality, and cost:
+
+- performance: low overhead and low operational burden
+- quality: good for stable durable notes and project knowledge, weaker than richer systems for semantic recall across messy histories
+- cost: low; likely the cheapest path to meaningful improvement in Ralph's memory discipline
+
+Evaluation:
+
+- now for current Ralph
+- now for future lightweight harnesses
+
+### 8. `redis/agent-memory-server`
+
+Repo:
+
+- <https://github.com/redis/agent-memory-server>
+
+Where useful:
+
+- shared infrastructure-backed memory
+- production-ish service deployments
+- teams that already use Redis
+- future harnesses that need a central memory service
+
+How useful:
+
+- useful more for service shape, operations, and caching patterns than for Ralph's immediate needs
+- good reference if Ralph eventually needs central shared memory across runs, users, or machines
+- low direct value for today's repo-local file loop
+
+Impact on performance, quality, and cost:
+
+- performance: potentially good at scale if Redis is already part of the stack; unnecessary overhead for local single-repo work
+- quality: modest direct quality gain unless the surrounding extraction and retrieval logic is also strong
+- cost: medium because it adds infrastructure even if the server itself is straightforward
+
+Evaluation:
+
+- maybe for current Ralph
+- soon for service-backed future harnesses
+
+## Recommended Reading Order
+
+If the goal is broad memory-system scanning across multiple projects, read these first:
+
+1. `mem0ai/mem0`
+2. `supermemoryai/supermemory`
+3. `letta-ai/letta`
+4. `CaviraOSS/OpenMemory`
+5. `agentscope-ai/ReMe`
+6. `basicmachines-co/basic-memory`
+7. `MemTensor/MemOS`
+8. `redis/agent-memory-server`
+
+Why this order:
+
+- the first three show the most productized and broadly reusable patterns
+- the middle group is where many of the most stealable architectural ideas live
+- the last two are more specialized, either concept-heavy or infra-specific
+
+## Recommended Reading Order For Ralph
+
+If the goal is to improve Ralph without losing its current strengths, read these first:
+
+1. `agentscope-ai/ReMe`
+2. `basicmachines-co/basic-memory`
+3. `CaviraOSS/OpenMemory`
+4. `MemTensor/MemOS`
+
+Why this order:
+
+- `ReMe` and `basic-memory` are the closest fits to Ralph's file-first, inspectable, single-agent design
+- `OpenMemory` adds more ambitious retrieval and memory typing ideas without immediately forcing a full runtime redesign
+- `MemOS` is most useful once Ralph wants clearer separation between facts, procedures, and learned reusable skills
+
+## General Recommendation
+
+Across projects in general, the list splits into three useful buckets:
+
+- use now as broad memory platforms: `mem0`, `supermemory`, `letta`
+- steal architecture from: `OpenMemory`, `ReMe`, `MemOS`
+- keep honest as simple local-first baselines: `basic-memory`
+
+Pragmatically:
+
+- if a project needs hosted or shared memory, start with `mem0` or `supermemory`
+- if a project needs stateful-agent runtime ideas, study `letta`
+- if a project needs inspectable memory with less magic, study `ReMe` and `basic-memory`
+- if a project needs typed or layered memory design, study `OpenMemory` and `MemOS`
+
+## Ralph Recommendation
+
+For current Ralph, the strongest direction is not "bolt on a generic memory product".
+
+It is:
+
+- keep durable memory inspectable on disk
+- add stronger compaction and synthesis
+- introduce typed buckets for facts, procedures, and transient run state
+- borrow hybrid retrieval ideas carefully, only where they beat simple file lookup
+
+Bluntly:
+
+- `ReMe` and `basic-memory` look usable now
+- `OpenMemory` and `MemOS` look useful soon
+- `mem0`, `supermemory`, `letta`, and `agent-memory-server` are mostly future-harness material unless Ralph becomes more service-backed and multi-user
