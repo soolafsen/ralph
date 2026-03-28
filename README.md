@@ -85,16 +85,10 @@ Most users should start with normal `ralph build`.
 
 - `ralph build`: default mode for normal multi-story Ralph work.
 - `ralph build 1`: one focused iteration when you want a smaller pass.
-- `ralph build 1 --tiny`: same loop, but with a smaller-task prompt bias for very small work.
 - `ralph build --barebones`: most stripped-down loop; defaults to one iteration and avoids extra verification unless the story or quality gates require it.
 - `ralph build --verbose`: stream the full live agent output instead of the default terse progress view.
 
-If `--tiny` and `--barebones` sound close, the short version is:
-
-- `--tiny` keeps the normal loop and only changes how aggressively Ralph stays small.
-- `--barebones` is the minimal loop mode.
-
-More detail lives in [docs/usage-reference.md](docs/usage-reference.md).
+More detail on advanced flags, including `--tiny`, lives in [docs/usage-reference.md](docs/usage-reference.md).
 
 ## Benchmarks
 
@@ -110,20 +104,12 @@ The full benchmark catalog and suite guidance live in [docs/benchmarking.md](doc
 
 - [Usage reference](docs/usage-reference.md)
 - [Benchmarking](docs/benchmarking.md)
-- [Tuning TODO](docs/tuning-todo.md)
 
 ## Notes
 
 - Ralph is tuned for Codex and Windows first.
 - `ralph prd` expects the `prd` skill to exist for the agent you are using.
 - For tiny one-off edits, direct Codex use can still be cheaper than running a full Ralph loop.
-
-## Local Checks
-
-```bash
-npm test
-npm run bench:quick
-```
 
 ## When Ralph Fits
 
