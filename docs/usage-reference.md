@@ -11,6 +11,15 @@ Ralph is a file-based, single-agent loop.
 - loop state, logs, and run history live under `.ralph/`
 - each new iteration starts from the current repo plus compact on-disk learned state rather than one long chat context
 
+## Backpressure And AGENTS
+
+Ralph works better when the repo pushes back clearly.
+
+- strong checks such as tests, typechecks, lint, and browser verification help Ralph tell the difference between "changed files" and "actually done"
+- good backpressure keeps the loop honest and reduces fake progress on longer runs
+- keep `AGENTS.md` short and operational: setup, run, test, verify, and repo-specific gotchas
+- do not turn `AGENTS.md` into a progress diary; progress belongs in the PRD, `.ralph/`, and run logs
+
 ## Mode Chooser
 
 Use normal `ralph build` unless you have a clear reason not to.

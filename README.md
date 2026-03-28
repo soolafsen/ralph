@@ -80,6 +80,8 @@ ralph build
 
 That is the real default path: Ralph runs up to its default iteration limit and stops early when all stories are done.
 
+Ralph works best when the repo pushes back with real checks; good backpressure keeps the loop honest.
+
 Run one build iteration:
 
 ```bash
