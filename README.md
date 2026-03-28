@@ -127,6 +127,6 @@ npm run bench:quick
 Use Ralph when you want a resumable PRD-driven loop instead of a one-off prompt.
 
 - Good fit: multi-step repo work, benchmarks, iterative cleanup, or changes where you want progress tracked on disk.
-- Less useful: tiny one-file edits where direct Codex is faster than creating and running a PRD.
+- Less useful: tiny one-file edits where a direct pass in your AI editor or agent is faster than creating and running a PRD.
 - What to expect: Ralph reads the current repo state each iteration, completes one story at a time, and writes logs and progress under `.ralph/`.
 - Why this helps: each iteration starts with fresh on-disk context plus compact learned state, which helps avoid context rot and makes longer unsupervised runs more reliable.
