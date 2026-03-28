@@ -56,6 +56,14 @@ Or use an existing plan file:
 ralph prd --plan plan.md
 ```
 
+Run the normal build loop:
+
+```bash
+ralph build
+```
+
+That is the real default path: Ralph runs up to its default iteration limit and stops early when all stories are done.
+
 Run one build iteration:
 
 ```bash
@@ -73,7 +81,8 @@ ralph overview
 
 Most users should start with normal `ralph build`.
 
-- `ralph build 1`: default mode for normal multi-story Ralph work.
+- `ralph build`: default mode for normal multi-story Ralph work.
+- `ralph build 1`: one focused iteration when you want a smaller pass.
 - `ralph build 1 --tiny`: same loop, but with a smaller-task prompt bias for very small work.
 - `ralph build --barebones`: most stripped-down loop; defaults to one iteration and avoids extra verification unless the story or quality gates require it.
 
