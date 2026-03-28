@@ -109,12 +109,6 @@ The full benchmark catalog and suite guidance live in [docs/benchmarking.md](doc
 - [Usage reference](docs/usage-reference.md)
 - [Benchmarking](docs/benchmarking.md)
 
-## Notes
-
-- Ralph is tuned for Codex and Windows first.
-- `ralph prd` expects the `prd` skill to exist for the agent you are using.
-- For tiny one-off edits, direct Codex use can still be cheaper than running a full Ralph loop.
-
 ## When Ralph Fits
 
 Use Ralph when you want a resumable PRD-driven loop instead of a one-off prompt.
