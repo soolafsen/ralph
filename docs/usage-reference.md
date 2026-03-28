@@ -2,11 +2,21 @@
 
 This page holds the detailed runtime and mode reference that does not need to stay on the landing README.
 
+## How Ralph Works
+
+Ralph is a file-based, single-agent loop.
+
+- a PRD defines the stories, gates, and status Ralph works through
+- each `ralph build` iteration picks one story and advances it
+- loop state, logs, and run history live under `.ralph/`
+- each new iteration starts from the current repo plus compact on-disk learned state rather than one long chat context
+
 ## Mode Chooser
 
 Use normal `ralph build` unless you have a clear reason not to.
 
 - Default build: use for most PRD-driven multi-story work.
+- `--no-commit`: useful for short-lived test runs when you want a real loop pass without creating a commit.
 - `--tiny`: use when the work is genuinely very small and you want Ralph to stay compact without changing the normal loop shape.
 - `--barebones`: use when you want the most stripped-down loop and the lightest acceptable verification path.
 

@@ -101,6 +101,7 @@ Most users should start with normal `ralph build`.
 
 - `ralph build`: default mode for normal multi-story Ralph work.
 - `ralph build 1`: one focused iteration when you want a smaller pass.
+- `ralph build 1 --no-commit`: useful first test run when you want Ralph to work the loop without creating a commit.
 - `ralph build --barebones`: most stripped-down loop; defaults to one iteration and avoids extra verification unless the story or quality gates require it.
 - `ralph build --verbose`: stream the full live agent output instead of the default terse progress view.
 
