@@ -117,7 +117,7 @@ For regular benchmark feedback, start with:
 ralph bench:quick
 ```
 
-The full benchmark catalog and suite guidance live in [docs/benchmarking.md](docs/benchmarking.md). The hourly suite is now kept as a sub-60-minute layer, with deeper API/process-lifecycle coverage left to the deep suite.
+Benchmark suite details live in [docs/benchmarking.md](docs/benchmarking.md).
 
 ## Docs
 
