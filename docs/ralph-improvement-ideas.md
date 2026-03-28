@@ -488,6 +488,48 @@ Evaluation:
 - maybe for current Ralph
 - soon for service-backed future harnesses
 
+## Research Paper Entry
+
+This is not a production memory system, but it is worth tracking because the underlying idea is strong and transferable.
+
+### 9. DeepSeek Engram
+
+Source:
+
+- Paper: <https://arxiv.org/abs/2601.07372>
+- Repo: <https://github.com/deepseek-ai/Engram>
+
+Where useful:
+
+- memory-heavy agent backends
+- systems that repeatedly reconstruct stable knowledge at runtime
+- future harnesses that want a sharper split between lookup and reasoning
+- Ralph only as a design influence, not as a direct implementation target
+
+How useful:
+
+- the key idea is to treat static memory lookup as a first-class primitive instead of forcing the model or harness to rebuild everything through expensive reasoning
+- for non-training projects, the stealable part is the architecture principle: exact or deterministic retrieval first, richer reasoning second
+- this maps well to project memory, failure signatures, reusable procedures, and compact fact stores
+
+Impact on performance, quality, and cost:
+
+- performance: potentially strong upside if it reduces repeated summarization, repeated search, and prompt bloat; little direct value if bolted on without disciplined memory boundaries
+- quality: high conceptual upside because it encourages cleaner separation between durable facts and active reasoning
+- cost: low to medium for stealing the ideas; high if you misread it as a reason to build a complex ML-style memory stack for simple agent workflows
+
+Evaluation:
+
+- now as an architecture idea source
+- soon for future harnesses that need a more explicit lookup layer
+- maybe for current Ralph as an immediate implementation priority
+
+Practical takeaway:
+
+- do not copy the model-layer mechanism unless you are training models
+- do copy the principle that stable knowledge should be looked up cheaply and deterministically where possible
+- if adopted in Ralph-like systems, the best form is likely typed on-disk memory plus a retrieval cascade such as exact key lookup -> structured recall -> semantic search -> full reasoning
+
 ## Recommended Reading Order
 
 If the goal is broad memory-system scanning across multiple projects, read these first:
@@ -500,12 +542,13 @@ If the goal is broad memory-system scanning across multiple projects, read these
 6. `basicmachines-co/basic-memory`
 7. `MemTensor/MemOS`
 8. `redis/agent-memory-server`
+9. `DeepSeek Engram` paper and repo
 
 Why this order:
 
 - the first three show the most productized and broadly reusable patterns
 - the middle group is where many of the most stealable architectural ideas live
-- the last two are more specialized, either concept-heavy or infra-specific
+- the last three are more specialized, either concept-heavy, infra-specific, or research-first
 
 ## Recommended Reading Order For Ralph
 
@@ -515,19 +558,21 @@ If the goal is to improve Ralph without losing its current strengths, read these
 2. `basicmachines-co/basic-memory`
 3. `CaviraOSS/OpenMemory`
 4. `MemTensor/MemOS`
+5. `DeepSeek Engram`
 
 Why this order:
 
 - `ReMe` and `basic-memory` are the closest fits to Ralph's file-first, inspectable, single-agent design
 - `OpenMemory` adds more ambitious retrieval and memory typing ideas without immediately forcing a full runtime redesign
 - `MemOS` is most useful once Ralph wants clearer separation between facts, procedures, and learned reusable skills
+- `DeepSeek Engram` is mainly a prompt to keep lookup cheap and deterministic rather than making the loop rediscover stable knowledge every time
 
 ## General Recommendation
 
 Across projects in general, the list splits into three useful buckets:
 
 - use now as broad memory platforms: `mem0`, `supermemory`, `letta`
-- steal architecture from: `OpenMemory`, `ReMe`, `MemOS`
+- steal architecture from: `OpenMemory`, `ReMe`, `MemOS`, `DeepSeek Engram`
 - keep honest as simple local-first baselines: `basic-memory`
 
 Pragmatically:
@@ -536,6 +581,7 @@ Pragmatically:
 - if a project needs stateful-agent runtime ideas, study `letta`
 - if a project needs inspectable memory with less magic, study `ReMe` and `basic-memory`
 - if a project needs typed or layered memory design, study `OpenMemory` and `MemOS`
+- if a project keeps recomputing stable project knowledge, study `DeepSeek Engram` for the lookup-versus-reasoning split
 
 ## Ralph Recommendation
 
@@ -552,4 +598,5 @@ Bluntly:
 
 - `ReMe` and `basic-memory` look usable now
 - `OpenMemory` and `MemOS` look useful soon
+- `DeepSeek Engram` looks useful now as a design principle, but not as something Ralph should directly implement at the model layer
 - `mem0`, `supermemory`, `letta`, and `agent-memory-server` are mostly future-harness material unless Ralph becomes more service-backed and multi-user
