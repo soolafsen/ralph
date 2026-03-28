@@ -86,11 +86,15 @@ Ralph can run from bundled defaults or from a repo-local `.agents/ralph` copy.
 - `ralph install --skills` installs the bundled skills for the agent scope you choose
 - for Codex, the `prd` skill must exist before `ralph prd` can generate PRDs reliably
 
-## Quiet Mode
+## Output Mode
 
-Use `--quiet` when you want a short progress view in the terminal while keeping full logs on disk.
+Terse progress output is now the default for `ralph prd` and `ralph build`.
 
-Quiet mode shows major stage changes such as:
+Use `--verbose` when you want the full live agent output in the terminal instead of the default terse view.
+
+`--quiet` still works, but is now only a compatibility alias for the default behavior.
+
+The default terse mode shows major stage changes such as:
 
 - PRD started or completed
 - build iteration started
@@ -101,12 +105,12 @@ Quiet mode shows major stage changes such as:
 
 The detailed agent output still goes to `.ralph/runs/`.
 
-Quiet mode now uses actual run-log activity:
+The terse mode uses actual run-log activity:
 
 - `.` means the run log grew since the last check
 - each quiet-mode line is prefixed with a 24-hour timestamp
 - `[thinking 30s]`, `[thinking 60s]`, and so on mean the process is still alive but the log has not changed for that long
-- quiet mode warns when a run is quiet for a long time or when a completion marker appears but the process does not unwind
+- it warns when a run is quiet for a long time or when a completion marker appears but the process does not unwind
 
 ## Browser Visibility
 

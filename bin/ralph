@@ -22,7 +22,8 @@ let prdOutPath = null;
 let tinyMode = false;
 let barebonesMode = false;
 let planPath = null;
-let quietMode = false;
+let quietMode = true;
+let verboseMode = false;
 let showBrowser = false;
 
 function exists(p) {
@@ -92,7 +93,7 @@ Commands:
   ping                                Minimal agent health check
   doctor                              Check Ralph runner prerequisites
   log "<message>"                     Append to .ralph/activity.log
-  build [n] [--no-commit] [--tiny] [--barebones] [--quiet] [--show-browser]  Run build loop (default)
+  build [n] [--no-commit] [--tiny] [--barebones] [--verbose] [--show-browser]  Run build loop (default)
   overview                            Render a human overview from PRD JSON
   help                                Show this message
 
@@ -103,7 +104,8 @@ Options:
   --progress <path>                   Override progress log path
   --tiny                              Keep the normal loop, but force the smaller-task prompt path
   --barebones                         Minimal loop mode: single-story-biased with the lightest acceptable verification
-  --quiet                             Terse terminal output; full logs stay on disk
+  --quiet                             Compatibility alias for the default terse output mode
+  --verbose                           Stream full live agent output instead of the default terse mode
   --show-browser                      For browser verification, allow a visible browser window instead of preferring headless checks
   --force-skills                      Reinstall bundled skills even if they exist
   --agent <codex|claude|droid|opencode>  Override agent runner
@@ -112,6 +114,7 @@ Notes:
 - Uses local .agents/ralph if present; otherwise uses bundled defaults.
 - State and logs are written to .ralph/ in the project.
 - Normal build is the default for most Ralph work.
+- Quiet output is now the default; use --verbose for full live agent output.
 - --tiny changes prompt behavior for very small tasks; --barebones is the more minimal loop mode.
 - Browser verification still happens by default for frontend work. --show-browser only changes browser visibility for those checks.
 - --barebones defaults build runs to one iteration unless you pass an explicit iteration count.
@@ -126,7 +129,8 @@ Generate a PRD JSON via agent.
 Options:
   --plan <path>   Use a plan file as the PRD source
   --out <path>    Override the output file or directory
-  --quiet         Terse terminal output; full logs stay on disk
+  --quiet         Compatibility alias for the default terse output mode
+  --verbose       Stream full live agent output instead of the default terse mode
   --agent <name>  Override agent runner
 
 Auto-detect:
@@ -453,6 +457,11 @@ for (let i = 0; i < rawArgs.length; i += 1) {
   }
   if (arg === "--quiet") {
     quietMode = true;
+    continue;
+  }
+  if (arg === "--verbose") {
+    verboseMode = true;
+    quietMode = false;
     continue;
   }
   if (arg === "--show-browser") {
@@ -887,7 +896,7 @@ async function main() {
   if (progressPath) env.PROGRESS_PATH = progressPath;
   if (tinyMode) env.TINY_TASK_MODE_OVERRIDE = "true";
   if (barebonesMode) env.BAREBONES_MODE_OVERRIDE = "true";
-  if (quietMode) env.RALPH_QUIET = "1";
+  env.RALPH_QUIET = verboseMode ? "0" : "1";
   if (showBrowser) env.RALPH_BROWSER_VISIBILITY = "show";
   if (templateDir === globalDir) {
     env.PROMPT_BUILD = path.join(templateDir, "PROMPT_build.md");

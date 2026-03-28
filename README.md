@@ -77,6 +77,8 @@ ralph doctor
 ralph overview
 ```
 
+Ralph now uses terse progress output by default. Use `--verbose` if you want the full live agent output in the terminal instead of reading the detailed run logs under `.ralph/runs/`.
+
 ## Build Modes
 
 Most users should start with normal `ralph build`.
@@ -85,6 +87,7 @@ Most users should start with normal `ralph build`.
 - `ralph build 1`: one focused iteration when you want a smaller pass.
 - `ralph build 1 --tiny`: same loop, but with a smaller-task prompt bias for very small work.
 - `ralph build --barebones`: most stripped-down loop; defaults to one iteration and avoids extra verification unless the story or quality gates require it.
+- `ralph build --verbose`: stream the full live agent output instead of the default terse progress view.
 
 If `--tiny` and `--barebones` sound close, the short version is:
 
