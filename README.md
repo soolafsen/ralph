@@ -21,6 +21,15 @@ Details live in [docs/usage-reference.md](docs/usage-reference.md) and [docs/ben
 
 ## Quick Start
 
+TL;DR:
+
+```bash
+npm i -g github:soolafsen/ralph#main
+ralph install
+ralph prd
+ralph build
+```
+
 Install Ralph from GitHub:
 
 ```bash
