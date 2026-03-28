@@ -4,6 +4,8 @@
 
 Ralph is a file-based agent loop for autonomous coding. This fork is tuned for Codex on Windows and is optimized for resumable PRD-driven work rather than one-off chat turns.
 
+Ralph is a single-agent, multi-iteration loop: it works through one PRD story at a time rather than coordinating multiple agents at once.
+
 ## Not Vanilla Ralph
 
 This fork intentionally incorporates ideas learned from GSD and lean-ctx work rather than staying as a stock Ralph loop.
