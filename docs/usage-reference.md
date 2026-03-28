@@ -15,6 +15,19 @@ Short version:
 - `--tiny` changes prompt behavior.
 - `--barebones` changes loop behavior.
 
+## GSD And Lean-ctx Influence
+
+This fork is not trying to be a stock Ralph experience.
+
+The main design choices borrowed and adapted here are:
+
+- GSD-style fresh execution from explicit on-disk state instead of relying on ever-growing conversational context
+- purpose-specific memory files for progress, recipes, and strategy, rather than one large blob of persistent context
+- lean-ctx-style prompt discipline, where injected memory is capped and trimmed so longer runs stay coherent
+- inspectable learned state that can help later iterations without silently bloating every prompt
+
+The goal is simple: keep Ralph useful on longer unsupervised runs without paying the usual context-rot penalty.
+
 ## Tiny Task Mode
 
 Tiny-task mode is designed for very small stories where the original Ralph prompt overhead is wasteful.

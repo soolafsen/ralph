@@ -98,9 +98,7 @@ The full benchmark catalog and suite guidance live in [docs/benchmarking.md](doc
 
 - [Usage reference](docs/usage-reference.md)
 - [Benchmarking](docs/benchmarking.md)
-- [Multi-agent outline](docs/multi-agent-outline.md)
 - [Tuning TODO](docs/tuning-todo.md)
-- [Ralph improvement ideas](docs/ralph-improvement-ideas.md)
 
 ## Notes
 
