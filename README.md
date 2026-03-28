@@ -6,6 +6,8 @@ Ralph is a file-based agent loop for autonomous coding. This fork is tuned for C
 
 Ralph is a single-agent, multi-iteration loop: it works through one PRD story at a time rather than coordinating multiple agents at once.
 
+With respect to Geoffrey Huntley, who originated the Ralph / Ralph Wiggum loop concept. If you want the original framing, start with [how-to-ralph-wiggum](https://github.com/ghuntley/how-to-ralph-wiggum).
+
 ## Not Vanilla Ralph
 
 This fork intentionally incorporates ideas learned from GSD and lean-ctx work rather than staying as a stock Ralph loop.
