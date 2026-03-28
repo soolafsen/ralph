@@ -2,6 +2,51 @@
 
 This page holds the detailed runtime and mode reference that does not need to stay on the landing README.
 
+## How Ralph Works
+
+Ralph is a file-based, single-agent loop.
+
+- a PRD defines the stories, gates, and status Ralph works through
+- each `ralph build` iteration picks one story and advances it
+- loop state, logs, and run history live under `.ralph/`
+- each new iteration starts from the current repo plus compact on-disk learned state rather than one long chat context
+
+## Backpressure And AGENTS
+
+Ralph works better when the repo pushes back clearly.
+
+- strong checks such as tests, typechecks, lint, and browser verification help Ralph tell the difference between "changed files" and "actually done"
+- good backpressure keeps the loop honest and reduces fake progress on longer runs
+- keep `AGENTS.md` short and operational: setup, run, test, verify, and repo-specific gotchas
+- do not turn `AGENTS.md` into a progress diary; progress belongs in the PRD, `.ralph/`, and run logs
+
+## Mode Chooser
+
+Use normal `ralph build` unless you have a clear reason not to.
+
+- Default build: use for most PRD-driven multi-story work.
+- `--no-commit`: useful for short-lived test runs when you want a real loop pass without creating a commit.
+- `--tiny`: use when the work is genuinely very small and you want Ralph to stay compact without changing the normal loop shape.
+- `--barebones`: use when you want the most stripped-down loop and the lightest acceptable verification path.
+
+Short version:
+
+- `--tiny` changes prompt behavior.
+- `--barebones` changes loop behavior.
+
+## GSD And Lean-ctx Influence
+
+This fork is not trying to be a stock Ralph experience.
+
+The main design choices borrowed and adapted here are:
+
+- GSD-style fresh execution from explicit on-disk state instead of relying on ever-growing conversational context
+- purpose-specific memory files for progress, recipes, and strategy, rather than one large blob of persistent context
+- lean-ctx-style prompt discipline, where injected memory is capped and trimmed so longer runs stay coherent
+- inspectable learned state that can help later iterations without silently bloating every prompt
+
+The goal is simple: keep Ralph useful on longer unsupervised runs without paying the usual context-rot penalty.
+
 ## Tiny Task Mode
 
 Tiny-task mode is designed for very small stories where the original Ralph prompt overhead is wasteful.
@@ -23,7 +68,7 @@ Practical effects of `--tiny`:
 - biases Codex toward the shortest valid implementation
 - reduces unnecessary scaffolding, ceremony, and extra documentation
 - skips progress snapshot context in the slimmer loop path
-- helps keep trivial tasks from getting over-engineered
+- helps keep trivial tasks from getting over-engineered while preserving the normal Ralph loop
 
 What `--tiny` does not do:
 
@@ -49,13 +94,26 @@ Practical effects of `--barebones`:
 - defaults build runs to one iteration unless you pass an explicit iteration count
 - biases the agent toward the smallest viable story implementation
 - avoids tests, browser checks, package installs, and README churn unless the story or quality gates actually require them
-- keeps the loop file-based and story-based like normal Ralph
+- keeps the loop file-based and story-based, but with a more aggressively minimal execution path
 
-## Quiet Mode
+## Install And Upgrade Notes
 
-Use `--quiet` when you want a short progress view in the terminal while keeping full logs on disk.
+Ralph can run from bundled defaults or from a repo-local `.agents/ralph` copy.
 
-Quiet mode shows major stage changes such as:
+- if a repo contains `.agents/ralph`, that local copy overrides the bundled global install for that repo
+- after upgrading the global CLI, run `ralph install --force` in repos that should pick up the refreshed local templates
+- `ralph install --skills` installs the bundled skills for the agent scope you choose
+- for Codex, the `prd` skill must exist before `ralph prd` can generate PRDs reliably
+
+## Output Mode
+
+Terse progress output is now the default for `ralph prd` and `ralph build`.
+
+Use `--verbose` when you want the full live agent output in the terminal instead of the default terse view.
+
+`--quiet` still works, but is now only a compatibility alias for the default behavior.
+
+The default terse mode shows major stage changes such as:
 
 - PRD started or completed
 - build iteration started
@@ -66,12 +124,12 @@ Quiet mode shows major stage changes such as:
 
 The detailed agent output still goes to `.ralph/runs/`.
 
-Quiet mode now uses actual run-log activity:
+The terse mode uses actual run-log activity:
 
 - `.` means the run log grew since the last check
 - each quiet-mode line is prefixed with a 24-hour timestamp
 - `[thinking 30s]`, `[thinking 60s]`, and so on mean the process is still alive but the log has not changed for that long
-- quiet mode warns when a run is quiet for a long time or when a completion marker appears but the process does not unwind
+- it warns when a run is quiet for a long time or when a completion marker appears but the process does not unwind
 
 ## Browser Visibility
 

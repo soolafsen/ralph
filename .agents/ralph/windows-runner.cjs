@@ -2099,7 +2099,7 @@ async function runBuild() {
       if (stuckDecision) {
         logError(`ITERATION ${iteration} stuck-loop detected (${stuckDecision.reason}); ${stuckDecision.message}`);
         if (quietMode) {
-          quietEcho(`Build: stuck-loop detected for ${storyId}`);
+          quietEcho(`Build: Stuck-loop detected: ${stuckDecision.message}`);
         } else {
           console.error(`Stuck-loop detected: ${stuckDecision.message}`);
         }

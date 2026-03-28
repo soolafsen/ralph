@@ -171,11 +171,10 @@
         "quick-node-cli",
         "quick-python-primes",
         "hourly-python-library",
-        "hourly-frontend-build",
-        "hourly-node-api"
+        "hourly-frontend-build"
       ],
-      "targetMaxMinutes": 90,
-      "notes": "Broader suite for cheap libraries, cheap CLIs, non-browser frontend work, and lightweight API/process behavior."
+      "targetMaxMinutes": 45,
+      "notes": "Broader suite for cheap libraries, cheap CLIs, and non-browser frontend work while keeping the Windows-friendly hourly layer comfortably under 60 minutes."
     },
     {
       "id": "deep",
