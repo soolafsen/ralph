@@ -1,5 +1,7 @@
 # Ralph
 
+<img src="ralph.webp" alt="Ralph" width="50%" />
+
 Ralph is a file-based agent loop for autonomous coding. This fork is tuned for Codex on Windows and is optimized for resumable PRD-driven work rather than one-off chat turns.
 
 ## Quick Start
