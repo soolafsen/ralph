@@ -103,3 +103,11 @@ The full benchmark catalog and suite guidance live in [docs/benchmarking.md](doc
 npm test
 npm run bench:quick
 ```
+
+## When Ralph Fits
+
+Use Ralph when you want a resumable PRD-driven loop instead of a one-off prompt.
+
+- Good fit: multi-step repo work, benchmarks, iterative cleanup, or changes where you want progress tracked on disk.
+- Less useful: tiny one-file edits where direct Codex is faster than creating and running a PRD.
+- What to expect: Ralph reads the current repo state each iteration, completes one story at a time, and writes logs and progress under `.ralph/`.
