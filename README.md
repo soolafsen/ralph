@@ -31,6 +31,14 @@ Create a PRD:
 ralph prd "Add a small JSON CLI for parsing and filtering a file"
 ```
 
+If you already have a `plan.md`, you can often just run:
+
+```bash
+ralph prd
+```
+
+When you do that, Ralph will look for `cursor-plan.md`, `plan.md`, and `*.plan.md` in the repo root and use one of them before falling back to manual entry.
+
 Or use an existing plan file:
 
 ```bash
