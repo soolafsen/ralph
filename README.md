@@ -30,6 +30,8 @@ ralph prd
 ralph build
 ```
 
+If you just want to get going, the four commands above are enough. The rest of this section only adds detail.
+
 Install Ralph from GitHub:
 
 ```bash
