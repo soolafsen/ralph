@@ -4,6 +4,17 @@
 
 Ralph is a file-based agent loop for autonomous coding. This fork is tuned for Codex on Windows and is optimized for resumable PRD-driven work rather than one-off chat turns.
 
+## Not Vanilla Ralph
+
+This fork intentionally incorporates ideas learned from GSD and lean-ctx work rather than staying as a stock Ralph loop.
+
+- Windows-first Codex runner behavior, including SDK-backed supervision and quieter helper process handling on Windows
+- fresh per-iteration context plus bounded progress, recipe, and strategy memory so longer runs do not decay into context rot
+- layered benchmark suites (`smoke`, `quick`, `hourly`, `deep`) backed by deterministic PRD benchmark skills for repeatable tuning
+- long-run loop resilience features such as heartbeat output, hang recovery, and built-in local verification paths
+
+Details live in [docs/usage-reference.md](docs/usage-reference.md) and [docs/benchmarking.md](docs/benchmarking.md).
+
 ## Quick Start
 
 Install Ralph from GitHub:
