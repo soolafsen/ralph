@@ -31,8 +31,9 @@ Install the project templates in the repo you want Ralph to work on:
 
 ```bash
 ralph install
-ralph install --skills
 ```
+
+`ralph install` also offers to install the bundled skills Ralph expects for normal use.
 
 If that repo already has `.agents/ralph`, the local copy wins. Refresh it with:
 
