@@ -117,6 +117,7 @@ The default terse mode shows major stage changes such as:
 
 - PRD started or completed
 - build iteration started
+- selected build story plus its one- or two-line short description before the heartbeat
 - story completed, failed, or incomplete
 - remaining story count
 - log file path
