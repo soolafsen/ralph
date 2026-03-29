@@ -204,12 +204,12 @@ try {
     /\[\d{2}:\d{2}:\d{2}\] Build: story US-001 - Compact story description\r?\n\[\d{2}:\d{2}:\d{2}\]   Write a compact story summary\.\r?\n\[\d{2}:\d{2}:\d{2}\]   Keep it brief in the JSON output\./,
   );
 
-  const nonQuietRoot = mkdtempSync(path.join(tmpdir(), "ralph-normal-build-"));
+  const verboseRoot = mkdtempSync(path.join(tmpdir(), "ralph-verbose-build-"));
   try {
-    mkdirSync(path.join(nonQuietRoot, ".agents", "tasks"), { recursive: true });
-    writeFileSync(prdPath.replace(quietBuildRoot, nonQuietRoot), `${JSON.stringify({
+    mkdirSync(path.join(verboseRoot, ".agents", "tasks"), { recursive: true });
+    writeFileSync(prdPath.replace(quietBuildRoot, verboseRoot), `${JSON.stringify({
       version: 1,
-      project: "Normal Build Smoke Test",
+      project: "Verbose Build Smoke Test",
       qualityGates: [],
       stories: [
         {
@@ -222,14 +222,14 @@ try {
         },
       ],
     }, null, 2)}\n`);
-    const nonQuietResult = runCapture(process.execPath, [cliPath, "build", "1", "--no-commit"], {
-      cwd: nonQuietRoot,
+    const verboseResult = runCapture(process.execPath, [cliPath, "build", "1", "--verbose", "--no-commit"], {
+      cwd: verboseRoot,
       env: { ...process.env, AGENT_CMD: `node ${mockAgentPath} {prompt}`, RALPH_CODEX_BACKEND: "cli", RALPH_QUIET: "0" },
     });
-    assert.doesNotMatch(nonQuietResult.stdout, /Write a compact story summary\./);
-    assert.doesNotMatch(nonQuietResult.stdout, /Keep it brief in the JSON output\./);
+    assert.doesNotMatch(verboseResult.stdout, /Write a compact story summary\./);
+    assert.doesNotMatch(verboseResult.stdout, /Keep it brief in the JSON output\./);
   } finally {
-    rmSync(nonQuietRoot, { recursive: true, force: true });
+    rmSync(verboseRoot, { recursive: true, force: true });
   }
 } finally {
   rmSync(quietBuildRoot, { recursive: true, force: true });
