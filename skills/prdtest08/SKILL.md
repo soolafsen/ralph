@@ -1,6 +1,8 @@
 ---
 name: prdtest08
 description: "Deterministic benchmark PRD for a tiny Python utility library with pytest. Use when the user asks for prdtest08, a cheap Python library benchmark, or a small non-CLI Ralph benchmark."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST08 Python Tiny Library

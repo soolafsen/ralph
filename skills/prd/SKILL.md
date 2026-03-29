@@ -1,6 +1,8 @@
 ---
 name: prd
 description: "Generate a compact Product Requirements Document (PRD) as JSON for Ralph. Triggers on: create a prd, write prd for, plan this feature, requirements for, spec out."
+owner: ralph
+scope: project
 ---
 
 # PRD Generator (Compact JSON)

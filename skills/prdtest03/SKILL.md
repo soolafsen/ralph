@@ -1,6 +1,8 @@
 ---
 name: prdtest03
 description: "Deterministic benchmark PRD for a C# program that reads and writes data to an in-memory database-like store. Use when the user asks for prdtest03, a simple C# benchmark PRD, or a .NET in-memory CRUD benchmark for Ralph testing."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST03 C# In-Memory DB

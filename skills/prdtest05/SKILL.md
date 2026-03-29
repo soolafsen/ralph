@@ -1,6 +1,8 @@
 ---
 name: prdtest05
 description: "Deterministic benchmark PRD for a small Node HTTP API with an in-memory store. Use when the user asks for prdtest05, a process-lifecycle benchmark, or a lightweight server PRD to test Ralph stability and run instructions."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST05 Node Tiny API

@@ -1,6 +1,8 @@
 ---
 name: prdtest06
 description: "Deterministic benchmark PRD for a tiny Node JSON transform CLI. Use when the user asks for prdtest06, a cheap JSON/file benchmark, or a small Ralph benchmark that exercises parsing and focused tests."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST06 Node JSON Transform CLI

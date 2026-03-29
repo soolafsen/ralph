@@ -1,6 +1,8 @@
 ---
 name: prdtest04
 description: "Deterministic low-token benchmark PRD for a tiny Node CLI text utility. Use when the user asks for prdtest04, a cheap Ralph benchmark, or a very small non-UI PRD to measure overhead and token usage."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST04 Node Tiny CLI

@@ -1,6 +1,8 @@
 ---
 name: prdtest02
 description: "Deterministic benchmark PRD for a Python program that calculates the first 99 prime numbers. Use when the user asks for prdtest02, a simple Python benchmark PRD, or a small non-UI PRD for Ralph testing."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST02 Python 99 Primes

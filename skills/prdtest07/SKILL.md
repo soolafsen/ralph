@@ -1,6 +1,8 @@
 ---
 name: prdtest07
 description: "Deterministic benchmark PRD for a tiny Node utility library with tests. Use when the user asks for prdtest07, a tiny library benchmark, or a very cheap non-CLI/non-server Ralph benchmark."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST07 Node Tiny Library

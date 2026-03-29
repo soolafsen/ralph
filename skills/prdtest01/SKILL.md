@@ -1,6 +1,8 @@
 ---
 name: prdtest01
 description: "Deterministic benchmark PRD for a simple React hello-world webapp with intentional styling and light interaction. Use when the user asks for prdtest01, a React benchmark PRD, or a recognizable small frontend PRD for Ralph testing."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST01 React Styled Hello

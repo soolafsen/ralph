@@ -1,6 +1,8 @@
 ---
 name: commit
 description: Write conventional commit messages with type, scope, and subject when the user wants to commit changes or save work.
+owner: ralph
+scope: project
 ---
 
 # Git Commit

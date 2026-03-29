@@ -1,6 +1,8 @@
 ---
 name: prdtest09
 description: "Deterministic benchmark PRD for a small frontend component app verified by build and tests, not browser automation. Use when the user asks for prdtest09, a frontend-no-browser benchmark, or a cheap UI-oriented Ralph benchmark."
+owner: ralph
+scope: project
 ---
 
 # PRDTEST09 Frontend Build-Only UI
