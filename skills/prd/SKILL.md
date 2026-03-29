@@ -115,7 +115,7 @@ Use this compact JSON shape:
       "title": "Short story title",
       "status": "open",
       "dependsOn": [],
-      "description": "Short story description",
+      "description": "One or two short lines describing the story",
       "acceptanceCriteria": [
         "Specific criterion",
         "Example: expected success case",
@@ -134,6 +134,8 @@ Use this compact JSON shape:
 - New stories always start as `"open"`
 - `dependsOn` must contain IDs only
 - Every story must include:
+  - a non-empty `description` field
+  - a `description` capped to one or two short lines, not a paragraph
   - at least one concrete success example
   - at least one negative case
 - If this is a new project, the first story must set up the minimal runnable project

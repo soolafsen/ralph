@@ -145,6 +145,14 @@ function quietEcho(message) {
   }
 }
 
+function shortStoryDescriptionLines(value) {
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+}
+
 function formatCount(value) {
   return new Intl.NumberFormat("en-US").format(value);
 }
@@ -970,6 +978,7 @@ function selectStory(metaOut, blockOut) {
     candidate.updatedAt = nowIso();
     meta.id = candidate.id || "";
     meta.title = candidate.title || "";
+    meta.description = candidate.description || "";
     const depends = Array.isArray(candidate.dependsOn) ? candidate.dependsOn : [];
     const acceptance = Array.isArray(candidate.acceptanceCriteria) ? candidate.acceptanceCriteria : [];
     const description = candidate.description || "";
@@ -1747,6 +1756,9 @@ async function runPrd() {
     lines.push("Examples: prd-workout-tracker.json, prd-usage-billing.json");
   }
   lines.push("Do NOT implement anything.");
+  lines.push("Every story must include a non-empty `description` field.");
+  lines.push("Keep each story `description` capped to one or two short lines.");
+  lines.push("Do not emit multi-paragraph or obviously verbose story descriptions.");
   lines.push("After creating the PRD, end with:");
   lines.push("PRD JSON saved to <path>. Close this chat and run `ralph build`.");
   lines.push("");
@@ -1837,9 +1849,16 @@ async function runBuild() {
     }
     const storyId = storyField(storyMeta, "id");
     const storyTitle = storyField(storyMeta, "title");
+    const storyDescription = storyField(storyMeta, "description");
     if (!storyId) {
       console.log(`No actionable open stories (all blocked or in progress). Remaining: ${remaining}`);
       process.exit(0);
+    }
+    if (quietMode) {
+      quietEcho(`Build: story ${storyId} - ${storyTitle}`);
+      for (const line of shortStoryDescriptionLines(storyDescription)) {
+        quietEcho(`  ${line}`);
+      }
     }
 
     const iterStart = Date.now();
