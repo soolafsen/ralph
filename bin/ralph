@@ -108,7 +108,7 @@ Options:
   --verbose                           Stream full live agent output instead of the default terse mode
   --show-browser                      For browser verification, allow a visible browser window instead of preferring headless checks
   --force-skills                      Reinstall bundled skills even if they exist
-  --agent <codex|claude|droid|opencode>  Override agent runner
+  --agent <pi|codex|claude|droid|opencode>  Override agent runner
 
 Notes:
 - Uses local .agents/ralph if present; otherwise uses bundled defaults.
@@ -163,6 +163,13 @@ function skillRootsForAgent(agentName, baseDir) {
       return [
         path.join(baseDir, ".codex", "skills"),
         path.join(home, ".codex", "skills"),
+      ];
+    case "pi":
+      return [
+        path.join(baseDir, ".agents", "skills"),
+        path.join(baseDir, ".pi", "skills"),
+        path.join(home, ".agents", "skills"),
+        path.join(home, ".pi", "agent", "skills"),
       ];
     case "claude":
       return [
@@ -520,12 +527,13 @@ async function runInstallSkills() {
   const agent = await select({
     message: "Which agent are you using?",
     options: [
+      { value: "pi", label: "pi" },
       { value: "codex", label: "codex" },
       { value: "claude", label: "claude" },
       { value: "droid", label: "droid" },
       { value: "opencode", label: "opencode" },
     ],
-    initialValue: agentOverride || "codex",
+    initialValue: agentOverride || "pi",
   });
   if (isCancel(agent)) {
     outro("Cancelled.");
@@ -551,6 +559,10 @@ async function runInstallSkills() {
       ? scope === "global"
         ? path.join(home, ".codex", "skills")
         : path.join(cwd, ".codex", "skills")
+      : agent === "pi"
+        ? scope === "global"
+          ? path.join(home, ".agents", "skills")
+          : path.join(cwd, ".agents", "skills")
       : agent === "claude"
         ? scope === "global"
           ? path.join(home, ".claude", "skills")
@@ -659,10 +671,14 @@ async function main() {
     const home = os.homedir();
     const bashExe = resolveBashExecutable();
     const codexSkills = path.join(home, ".codex", "skills");
+    const piSkills = path.join(home, ".agents", "skills");
     const detectedPlans = findPlanCandidates(cwd);
     const codexPrdLocal = path.join(cwd, ".codex", "skills", "prd");
     const codexPrdGlobal = path.join(home, ".codex", "skills", "prd");
+    const piPrdLocal = path.join(cwd, ".agents", "skills", "prd");
+    const piPrdGlobal = path.join(home, ".agents", "skills", "prd");
     const codexVersion = commandOutput("codex", ["--version"]);
+    const piVersion = commandOutput("pi", ["--version"]);
     const pythonVersion = commandOutput("python", ["--version"]);
     const gitBashPythonVersion = spawnSync(resolveBashExecutable(), ["-lc", "python3 --version"], withWindowsHide({ encoding: "utf-8" }));
     const playwrightPackage = resolveOptionalModule("playwright");
@@ -677,6 +693,11 @@ async function main() {
         label: "Codex CLI",
         ok: commandExists("codex"),
         detail: codexVersion.stdout?.trim() || codexVersion.stderr?.trim() || "not found",
+      },
+      {
+        label: "Pi CLI",
+        ok: commandExists("pi"),
+        detail: piVersion.stdout?.trim() || piVersion.stderr?.trim() || "not found",
       },
       {
         label: "Codex SDK package",
@@ -724,6 +745,11 @@ async function main() {
         detail: codexSkills,
       },
       {
+        label: "Global Pi skills",
+        ok: exists(piSkills),
+        detail: piSkills,
+      },
+      {
         label: "PRD skill (local Codex)",
         ok: exists(codexPrdLocal),
         detail: codexPrdLocal,
@@ -732,6 +758,16 @@ async function main() {
         label: "PRD skill (global Codex)",
         ok: exists(codexPrdGlobal),
         detail: codexPrdGlobal,
+      },
+      {
+        label: "PRD skill (local Pi)",
+        ok: exists(piPrdLocal),
+        detail: piPrdLocal,
+      },
+      {
+        label: "PRD skill (global Pi)",
+        ok: exists(piPrdGlobal),
+        detail: piPrdGlobal,
       },
       {
         label: "Local templates",
@@ -754,8 +790,11 @@ async function main() {
       check.label === "Codex SDK package" ||
       check.label === "Git Bash (optional helpers)" ||
       check.label === "Python3 (Git Bash, optional)" ||
+      check.label === "Global Pi skills" ||
       check.label === "Local templates" ||
       check.label === "PRD skill (local Codex)" ||
+      check.label === "PRD skill (global Pi)" ||
+      check.label === "PRD skill (local Pi)" ||
       check.label === "Plan candidates in cwd",
     );
     process.exit(ok ? 0 : 1);
@@ -810,12 +849,14 @@ async function main() {
   }
   const loadAgentMap = () => {
     const defaults = {
+      pi: "pi --mode json --print --thinking medium --no-session",
       codex: "codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" -",
       claude: "claude -p --dangerously-skip-permissions \"$(cat {prompt})\"",
       droid: "droid exec --skip-permissions-unsafe -f {prompt}",
       opencode: "opencode run \"$(cat {prompt})\"",
     };
     const interactiveDefaults = {
+      pi: "pi --mode json --print --thinking medium --no-session",
       codex: "codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" {prompt}",
       claude: "claude --dangerously-skip-permissions {prompt}",
       droid: "droid --skip-permissions-unsafe {prompt}",
@@ -826,17 +867,19 @@ async function main() {
       return {
         headless: defaults,
         interactive: interactiveDefaults,
-        defaultAgent: "codex",
+        defaultAgent: "pi",
       };
     }
     const safePath = agentsPath.replace(/'/g, "'\\''");
     const bashCmd = [
       `source '${safePath}'`,
       'printf "DEFAULT_AGENT=%s\\n" "${DEFAULT_AGENT:-}"',
+      'printf "AGENT_PI_CMD=%s\\n" "${AGENT_PI_CMD:-}"',
       'printf "AGENT_CODEX_CMD=%s\\n" "${AGENT_CODEX_CMD:-}"',
       'printf "AGENT_CLAUDE_CMD=%s\\n" "${AGENT_CLAUDE_CMD:-}"',
       'printf "AGENT_DROID_CMD=%s\\n" "${AGENT_DROID_CMD:-}"',
       'printf "AGENT_OPENCODE_CMD=%s\\n" "${AGENT_OPENCODE_CMD:-}"',
+      'printf "AGENT_PI_INTERACTIVE_CMD=%s\\n" "${AGENT_PI_INTERACTIVE_CMD:-}"',
       'printf "AGENT_CODEX_INTERACTIVE_CMD=%s\\n" "${AGENT_CODEX_INTERACTIVE_CMD:-}"',
       'printf "AGENT_CLAUDE_INTERACTIVE_CMD=%s\\n" "${AGENT_CLAUDE_INTERACTIVE_CMD:-}"',
       'printf "AGENT_DROID_INTERACTIVE_CMD=%s\\n" "${AGENT_DROID_INTERACTIVE_CMD:-}"',
@@ -847,7 +890,7 @@ async function main() {
       return {
         headless: defaults,
         interactive: interactiveDefaults,
-        defaultAgent: "codex",
+        defaultAgent: "pi",
       };
     }
     const parsed = new Map();
@@ -860,31 +903,33 @@ async function main() {
     const readVar = (name) => parsed.get(name) || null;
     return {
       headless: {
+        pi: readVar("AGENT_PI_CMD") || defaults.pi,
         codex: readVar("AGENT_CODEX_CMD") || defaults.codex,
         claude: readVar("AGENT_CLAUDE_CMD") || defaults.claude,
         droid: readVar("AGENT_DROID_CMD") || defaults.droid,
         opencode: readVar("AGENT_OPENCODE_CMD") || defaults.opencode,
       },
       interactive: {
+        pi: readVar("AGENT_PI_INTERACTIVE_CMD") || interactiveDefaults.pi,
         codex: readVar("AGENT_CODEX_INTERACTIVE_CMD") || interactiveDefaults.codex,
         claude: readVar("AGENT_CLAUDE_INTERACTIVE_CMD") || interactiveDefaults.claude,
         droid: readVar("AGENT_DROID_INTERACTIVE_CMD") || interactiveDefaults.droid,
         opencode: readVar("AGENT_OPENCODE_INTERACTIVE_CMD") || interactiveDefaults.opencode,
       },
-      defaultAgent: readVar("DEFAULT_AGENT") || "codex",
+      defaultAgent: readVar("DEFAULT_AGENT") || "pi",
     };
   };
   const agentDefs = loadAgentMap();
   const agentMap = agentDefs.headless;
   const agentInteractiveMap = agentDefs.interactive;
-  const defaultAgent = agentDefs.defaultAgent || "codex";
+  const defaultAgent = agentDefs.defaultAgent || "pi";
   const selectedAgent = agentOverride || defaultAgent;
   const selectedAgentSource = agentOverride ? "map" : process.env.AGENT_CMD ? "env" : "map";
   if (agentOverride) {
     const mapped = agentMap[agentOverride];
     if (!mapped) {
       console.error(`Unknown agent: ${agentOverride}`);
-      console.error("Valid values: codex, claude, droid, opencode");
+      console.error("Valid values: pi, codex, claude, droid, opencode");
       process.exit(1);
     }
     process.env.AGENT_CMD = mapped;
@@ -1000,7 +1045,7 @@ async function main() {
     const agentName = agentOverride || defaultAgent;
     ensureRequiredSkill(agentName, "prd", cwd);
     const prdAgent = agentInteractiveMap[agentName] || agentMap[agentName];
-    if (prdAgent) {
+    if (prdAgent && !env.PRD_AGENT_CMD) {
       env.PRD_AGENT_CMD = prdAgent;
     }
     const prdArgs = ["prd", "--prompt", requestFile];

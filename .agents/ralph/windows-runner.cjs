@@ -162,6 +162,7 @@ function formatTokenBreakdown(stats) {
   const parts = [];
   if (stats.uncachedInputTokens != null) parts.push(`uncached input ${formatCount(stats.uncachedInputTokens)}`);
   if (stats.cachedInputTokens != null) parts.push(`cached input ${formatCount(stats.cachedInputTokens)}`);
+  if (stats.cacheWriteTokens != null) parts.push(`cache write ${formatCount(stats.cacheWriteTokens)}`);
   if (stats.outputTokens != null) parts.push(`output ${formatCount(stats.outputTokens)}`);
   if (stats.reasoningOutputTokens != null) parts.push(`reasoning ${formatCount(stats.reasoningOutputTokens)}`);
   if (stats.inputTokens != null) parts.push(`raw input ${formatCount(stats.inputTokens)}`);
@@ -1156,7 +1157,10 @@ function writeRunMeta(metaPath, payload) {
     `- Duration: ${payload.duration}s`,
     `- Price-ish Tokens: ${payload.tokens == null ? "unknown" : formatCount(payload.tokens)}`,
     `- Status: ${payload.status}`,
+    `- Agent: ${payload.agentKind || process.env.RALPH_AGENT_KIND || "unknown"}`,
     `- Backend: ${payload.backend || "cli"}`,
+    `- Provider: ${payload.provider || "unknown"}`,
+    `- Model: ${payload.model || "unknown"}`,
     `- Log: ${payload.logFile}`,
     `- Reflection: ${payload.reflectionFile || "unknown"}`,
     "",
@@ -1164,9 +1168,10 @@ function writeRunMeta(metaPath, payload) {
   if (payload.tokenStats) {
     lines.push("## Tokens", `- Price-ish Total: ${formatCount(payload.tokenStats.priceishTokens || payload.tokenStats.totalTokens)}`);
     if (payload.tokenStats.uncachedInputTokens != null) lines.push(`- Uncached Input: ${formatCount(payload.tokenStats.uncachedInputTokens)}`);
+    if (payload.tokenStats.cachedInputTokens != null) lines.push(`- Cached Input: ${formatCount(payload.tokenStats.cachedInputTokens)}`);
+    if (payload.tokenStats.cacheWriteTokens != null) lines.push(`- Cache Write: ${formatCount(payload.tokenStats.cacheWriteTokens)}`);
     if (payload.tokenStats.outputTokens != null) lines.push(`- Output: ${formatCount(payload.tokenStats.outputTokens)}`);
     if (payload.tokenStats.reasoningOutputTokens != null) lines.push(`- Reasoning Output: ${formatCount(payload.tokenStats.reasoningOutputTokens)}`);
-    if (payload.tokenStats.cachedInputTokens != null) lines.push(`- Cached Input: ${formatCount(payload.tokenStats.cachedInputTokens)}`);
     if (payload.tokenStats.inputTokens != null) lines.push(`- Raw Input: ${formatCount(payload.tokenStats.inputTokens)}`);
     lines.push("");
   }
@@ -1226,9 +1231,9 @@ function writeRunMetrics(metricsPath, payload) {
 function extractRunInstructions(logFile) {
   if (!exists(logFile)) return "";
   const text = fs.readFileSync(logFile, "utf-8");
-  const matches = Array.from(text.matchAll(/<run_instructions>\r?\n([\s\S]*?)\r?\n<\/run_instructions>/g));
+  const matches = Array.from(text.matchAll(/<run_instructions>(?:\r?\n|\\n)([\s\S]*?)(?:\r?\n|\\n)<\/run_instructions>/g));
   for (let i = matches.length - 1; i >= 0; i -= 1) {
-    const candidate = matches[i][1].trim();
+    const candidate = matches[i][1].replace(/\\n/g, "\n").trim();
     if (!candidate) continue;
     if (candidate === "<one command or next step per line>") continue;
     return candidate;
@@ -1363,11 +1368,50 @@ function extractTokenStatsFromSession(sessionFile) {
         inputTokens,
         cachedInputTokens,
         uncachedInputTokens,
+        cacheWriteTokens: 0,
         outputTokens,
         reasoningOutputTokens,
         priceishTokens,
         totalTokens: priceishTokens,
         rawTotalTokens: Number(usage.total_tokens || 0),
+        model: "",
+        provider: "",
+      };
+    } catch {}
+  }
+  return latest;
+}
+
+function extractTokenStatsFromPiJsonLog(logFile) {
+  if (!exists(logFile)) return null;
+  const lines = fs.readFileSync(logFile, "utf-8").split(/\r?\n/);
+  let latest = null;
+  for (const line of lines) {
+    if (!line || line[0] !== "{") continue;
+    try {
+      const data = JSON.parse(line);
+      if (!["message_end", "turn_end"].includes(data?.type)) continue;
+      const message = data?.message;
+      const usage = message?.usage;
+      if (!usage || message?.role !== "assistant") continue;
+      const inputTokens = Number(usage.input || 0);
+      const cachedInputTokens = Number(usage.cacheRead || 0);
+      const cacheWriteTokens = Number(usage.cacheWrite || 0);
+      const outputTokens = Number(usage.output || 0);
+      const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+      const priceishTokens = uncachedInputTokens + cacheWriteTokens + outputTokens;
+      latest = {
+        inputTokens,
+        cachedInputTokens,
+        uncachedInputTokens,
+        cacheWriteTokens,
+        outputTokens,
+        reasoningOutputTokens: 0,
+        priceishTokens,
+        totalTokens: priceishTokens,
+        rawTotalTokens: Number(usage.totalTokens || usage.total || 0),
+        model: message?.model || "",
+        provider: message?.provider || "",
       };
     } catch {}
   }
@@ -1381,16 +1425,23 @@ function extractTokenStats(logFile) {
   if (detailed) {
     return detailed;
   }
+  const piDetailed = extractTokenStatsFromPiJsonLog(logFile);
+  if (piDetailed) {
+    return piDetailed;
+  }
   const totalTokens = extractTokensUsed(logFile);
   if (totalTokens == null) return null;
   return {
     inputTokens: null,
     cachedInputTokens: null,
     uncachedInputTokens: null,
+    cacheWriteTokens: null,
     outputTokens: null,
     reasoningOutputTokens: null,
     totalTokens,
     rawTotalTokens: totalTokens,
+    model: "",
+    provider: "",
   };
 }
 
@@ -1411,10 +1462,8 @@ function readLogTail(logFile, maxBytes = completeMarkerTailBytes) {
 function tailHasStandaloneCompletionMarker(logFile) {
   const tail = readLogTail(logFile);
   if (!tail) return false;
-  return tail
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .some((line) => line === completeMarker);
+  if (tail.includes(completeMarker)) return true;
+  return exists(logFile) && fs.readFileSync(logFile, "utf-8").includes(completeMarker);
 }
 
 function printRunInstructions(logFile) {
@@ -1721,7 +1770,7 @@ async function runAgentCommand(agentCommand, promptPath, logFile, label) {
 
 async function runPrd() {
   const config = parseConfigShell(configPath);
-  const prdAgentCommand = process.env.PRD_AGENT_CMD || process.env.AGENT_CMD || config.PRD_AGENT_CMD || config.AGENT_CMD || "codex exec --yolo --skip-git-repo-check -";
+  const prdAgentCommand = process.env.PRD_AGENT_CMD || process.env.AGENT_CMD || config.PRD_AGENT_CMD || config.AGENT_CMD || "pi --mode json --print --thinking medium --no-session";
   ensureDir(path.dirname(prdPath));
   ensureDir(tmpDir);
   ensureDir(runsDir);
@@ -1797,7 +1846,7 @@ function initializeFiles() {
 
 async function runBuild() {
   const config = parseConfigShell(configPath);
-  const agentCommand = process.env.AGENT_CMD || config.AGENT_CMD || "codex exec --yolo --skip-git-repo-check -";
+  const agentCommand = process.env.AGENT_CMD || config.AGENT_CMD || "pi --mode json --print --thinking medium --no-session";
   if (process.env.RALPH_DRY_RUN !== "1") {
     await requireConfiguredAgent(agentCommand);
   }
@@ -1808,6 +1857,7 @@ async function runBuild() {
     inputTokens: 0,
     cachedInputTokens: 0,
     uncachedInputTokens: 0,
+    cacheWriteTokens: 0,
     outputTokens: 0,
     reasoningOutputTokens: 0,
   };
@@ -1915,6 +1965,8 @@ async function runBuild() {
     const changedFiles = gitChangedFiles(headBefore, headAfter);
     const dirtyFiles = gitDirtyFiles();
     const tokenStats = result.tokenStats || extractTokenStats(logFile);
+    const model = result.model || tokenStats?.model || "";
+    const provider = result.provider || tokenStats?.provider || "";
     const tokensUsed = tokenStats ? (tokenStats.priceishTokens || tokenStats.totalTokens) : null;
     const completePresent = result.completed ?? hasCompletionMarker(logFile);
     const storyOutcomeStatus = interrupted
@@ -1932,6 +1984,7 @@ async function runBuild() {
         inputTokens: cumulativeTokenStats.inputTokens + Number(tokenStats.inputTokens || 0),
         cachedInputTokens: cumulativeTokenStats.cachedInputTokens + Number(tokenStats.cachedInputTokens || 0),
         uncachedInputTokens: cumulativeTokenStats.uncachedInputTokens + Number(tokenStats.uncachedInputTokens || 0),
+        cacheWriteTokens: cumulativeTokenStats.cacheWriteTokens + Number(tokenStats.cacheWriteTokens || 0),
         outputTokens: cumulativeTokenStats.outputTokens + Number(tokenStats.outputTokens || 0),
         reasoningOutputTokens: cumulativeTokenStats.reasoningOutputTokens + Number(tokenStats.reasoningOutputTokens || 0),
       };
@@ -1962,7 +2015,10 @@ async function runBuild() {
       tokens: tokensUsed,
       tokenStats,
       status: statusLabel,
+      agentKind: process.env.RALPH_AGENT_KIND || "unknown",
       backend: result.backend || "cli",
+      provider,
+      model,
       logFile,
       reflectionFile,
       headBefore,
@@ -2004,7 +2060,10 @@ async function runBuild() {
       tokensUsed,
       tokenStats,
       status: statusLabel,
+      agentKind: process.env.RALPH_AGENT_KIND || "unknown",
       backend: result.backend || "cli",
+      provider,
+      model,
       reflectionFile,
       prompt: {
         bytes: promptMetrics.bytes,
@@ -2047,7 +2106,10 @@ async function runBuild() {
       notesToAvoid: progressHints.notesToAvoid,
       outcome: progressHints.outcome,
       filesChanged: progressHints.filesChanged,
+      agentKind: process.env.RALPH_AGENT_KIND || "unknown",
       backend: result.backend || "cli",
+      provider,
+      model,
       completed: completePresent,
       committedFiles: changedFiles
         ? changedFiles.split(/\r?\n/).map((line) => line.replace(/^- /, "").trim()).filter(Boolean)

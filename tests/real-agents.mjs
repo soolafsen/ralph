@@ -123,7 +123,7 @@ function runForAgent(agent) {
   }
 }
 
-const agents = ["codex", "claude", "droid"];
+const agents = ["pi", "codex", "claude", "droid"];
 for (const agent of agents) {
   runForAgent(agent);
 }

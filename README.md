@@ -2,7 +2,7 @@
 
 <img src="ralph.webp" alt="Ralph" width="50%" />
 
-Ralph is a file-based agent loop for autonomous coding. This fork is tuned for Codex on Windows and is optimized for resumable PRD-driven work rather than one-off chat turns.
+Ralph is a file-based agent loop for autonomous coding. This branch is tuned for Pi on Windows by default while keeping Codex available for comparison and fallback.
 
 Ralph is a single-agent, multi-iteration loop: it works through one PRD story at a time rather than coordinating multiple agents at once.
 
@@ -12,7 +12,7 @@ With respect to Geoffrey Huntley, who originated the Ralph / Ralph Wiggum loop c
 
 This fork intentionally incorporates ideas learned from GSD and lean-ctx work rather than staying as a stock Ralph loop.
 
-- Windows-first Codex runner behavior, including SDK-backed supervision and quieter helper process handling on Windows
+- Windows-first Pi runner behavior, plus a Codex SDK path that still stays available as an explicit override
 - fresh per-iteration context plus bounded progress, recipe, and strategy memory so longer runs do not decay into context rot
 - layered benchmark suites (`smoke`, `quick`, `hourly`, `deep`) backed by deterministic PRD benchmark skills for repeatable tuning
 - long-run loop resilience features such as heartbeat output, hang recovery, and built-in local verification paths
@@ -118,6 +118,13 @@ ralph bench:quick
 ```
 
 Benchmark suite details live in [docs/benchmarking.md](docs/benchmarking.md).
+
+To compare Pi against the older Codex-default path on the same suite:
+
+```bash
+node scripts/run-ralph-benchmark-suite.mjs --suite quick --agent codex
+node scripts/run-ralph-benchmark-suite.mjs --suite quick --agent pi
+```
 
 ## Docs
 

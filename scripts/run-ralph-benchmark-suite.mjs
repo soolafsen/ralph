@@ -14,11 +14,12 @@ const recordScript = path.join(repoRoot, "scripts", "record-ralph-benchmark.mjs"
 const compareSuiteScript = path.join(repoRoot, "scripts", "compare-ralph-suite.mjs");
 
 function usage() {
-  console.log("Usage: node scripts/run-ralph-benchmark-suite.mjs --suite <id> [--keep-workspaces]");
+  console.log("Usage: node scripts/run-ralph-benchmark-suite.mjs --suite <id> [--agent <name>] [--keep-workspaces]");
 }
 
 function parseArgs(argv) {
   let suiteId = "";
+  let agent = "";
   let keepWorkspaces = false;
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -31,6 +32,11 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (arg === "--agent") {
+      agent = argv[i + 1] || "";
+      i += 1;
+      continue;
+    }
     if (arg === "--keep-workspaces") {
       keepWorkspaces = true;
     }
@@ -39,7 +45,7 @@ function parseArgs(argv) {
     usage();
     throw new Error("--suite is required");
   }
-  return { suiteId, keepWorkspaces };
+  return { suiteId, agent: agent || "pi", keepWorkspaces };
 }
 
 function readJson(filePath) {
@@ -79,12 +85,19 @@ function copySkill(skillName, targetRoot) {
   fs.cpSync(source, target, { recursive: true, force: true });
 }
 
-function prepareWorkspace(workspaceDir, benchmark) {
+function skillInstallRoot(agent, workspaceDir) {
+  return agent === "pi"
+    ? path.join(workspaceDir, ".agents", "skills")
+    : path.join(workspaceDir, ".codex", "skills");
+}
+
+function prepareWorkspace(workspaceDir, benchmark, agent) {
   fs.rmSync(workspaceDir, { recursive: true, force: true });
   ensureDir(workspaceDir);
-  ensureDir(path.join(workspaceDir, ".codex", "skills"));
-  copySkill("prd", path.join(workspaceDir, ".codex", "skills"));
-  copySkill(benchmark.skill, path.join(workspaceDir, ".codex", "skills"));
+  const installRoot = skillInstallRoot(agent, workspaceDir);
+  ensureDir(installRoot);
+  copySkill("prd", installRoot);
+  copySkill(benchmark.skill, installRoot);
   run("git", ["init"], { cwd: workspaceDir });
   runBestEffort("git", ["config", "user.name", "Ralph Benchmark"], { cwd: workspaceDir });
   runBestEffort("git", ["config", "user.email", "ralph-benchmark@example.invalid"], { cwd: workspaceDir });
@@ -107,24 +120,24 @@ function resolvePrdPath(workspaceDir, benchmark) {
   throw new Error(`Unable to resolve PRD path for ${benchmark.id}`);
 }
 
-function runBenchmark(workspaceDir, benchmark) {
+function runBenchmark(workspaceDir, benchmark, agent) {
   const env = {
     ...process.env,
     RALPH_SKIP_UPDATE_CHECK: "1",
   };
   console.log(`\n=== ${benchmark.id}: generate PRD ===`);
-  run(process.execPath, [binPath, "prd", `Use $${benchmark.skill}`, "--quiet"], {
+  run(process.execPath, [binPath, "prd", `Use $${benchmark.skill}`, "--quiet", "--agent", agent], {
     cwd: workspaceDir,
     env,
   });
   const prdPath = resolvePrdPath(workspaceDir, benchmark);
   console.log(`\n=== ${benchmark.id}: build ===`);
-  run(process.execPath, [binPath, "build", "--prd", prdPath, "--no-commit", "--quiet"], {
+  run(process.execPath, [binPath, "build", "--prd", prdPath, "--no-commit", "--quiet", "--agent", agent], {
     cwd: workspaceDir,
     env,
   });
   console.log(`\n=== ${benchmark.id}: record ===`);
-  run(process.execPath, [recordScript, "--benchmark", benchmark.id, workspaceDir], {
+  run(process.execPath, [recordScript, "--benchmark", benchmark.id, "--notes", `agent=${agent}`, workspaceDir], {
     cwd: repoRoot,
     env,
   });
@@ -142,18 +155,19 @@ function summarizeSuite(definitions, suiteId) {
 }
 
 try {
-  const { suiteId, keepWorkspaces } = parseArgs(process.argv);
+  const { suiteId, agent, keepWorkspaces } = parseArgs(process.argv);
   const definitions = readJson(definitionsPath);
   const { suite, benchmarks } = summarizeSuite(definitions, suiteId);
   ensureDir(workspaceRoot);
   console.log(`Running suite ${suite.id}: ${suite.name}`);
+  console.log(`Agent: ${agent}`);
   if (suite.targetMaxMinutes) {
     console.log(`Target max minutes: ${suite.targetMaxMinutes}`);
   }
   for (const benchmark of benchmarks) {
     const workspaceDir = path.join(workspaceRoot, benchmark.id);
-    prepareWorkspace(workspaceDir, benchmark);
-    runBenchmark(workspaceDir, benchmark);
+    prepareWorkspace(workspaceDir, benchmark, agent);
+    runBenchmark(workspaceDir, benchmark, agent);
     if (!keepWorkspaces) {
       fs.rmSync(workspaceDir, { recursive: true, force: true });
     }

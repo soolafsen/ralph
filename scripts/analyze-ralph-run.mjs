@@ -184,17 +184,61 @@ export function extractTokenStats(logFile) {
           inputTokens,
           cachedInputTokens,
           uncachedInputTokens,
+          cacheWriteTokens: 0,
           outputTokens,
           reasoningOutputTokens,
           priceishTokens,
           totalTokens: priceishTokens,
+          model: "",
+          provider: "",
+        };
+      } catch {}
+    }
+    if (latest) return latest;
+  }
+  if (logFile && exists(logFile)) {
+    const lines = fs.readFileSync(logFile, "utf-8").split(/\r?\n/);
+    let latest = null;
+    for (const line of lines) {
+      if (!line || line[0] !== "{") continue;
+      try {
+        const data = JSON.parse(line);
+        if (!["message_end", "turn_end"].includes(data?.type)) continue;
+        const message = data?.message;
+        const usage = message?.usage;
+        if (!usage || message?.role !== "assistant") continue;
+        const inputTokens = Number(usage.input || 0);
+        const cachedInputTokens = Number(usage.cacheRead || 0);
+        const cacheWriteTokens = Number(usage.cacheWrite || 0);
+        const outputTokens = Number(usage.output || 0);
+        const uncachedInputTokens = Math.max(0, inputTokens - cachedInputTokens);
+        const priceishTokens = uncachedInputTokens + cacheWriteTokens + outputTokens;
+        latest = {
+          inputTokens,
+          cachedInputTokens,
+          uncachedInputTokens,
+          cacheWriteTokens,
+          outputTokens,
+          reasoningOutputTokens: 0,
+          priceishTokens,
+          totalTokens: priceishTokens,
+          model: message?.model || "",
+          provider: message?.provider || "",
         };
       } catch {}
     }
     if (latest) return latest;
   }
   const totalTokens = extractTokensUsed(logFile);
-  return totalTokens == null ? null : { priceishTokens: totalTokens, totalTokens };
+  return totalTokens == null
+    ? null
+    : {
+        priceishTokens: totalTokens,
+        totalTokens,
+        cacheWriteTokens: 0,
+        model: "",
+        provider: "",
+      };
 }
 
 export function summarizeRun(projectDir, runId) {
@@ -221,6 +265,7 @@ export function summarizeRun(projectDir, runId) {
     acc.inputTokens += Number(stats.inputTokens || 0);
     acc.cachedInputTokens += Number(stats.cachedInputTokens || 0);
     acc.uncachedInputTokens += Number(stats.uncachedInputTokens || 0);
+    acc.cacheWriteTokens += Number(stats.cacheWriteTokens || 0);
     acc.outputTokens += Number(stats.outputTokens || 0);
     acc.reasoningOutputTokens += Number(stats.reasoningOutputTokens || 0);
     return acc;
@@ -230,6 +275,7 @@ export function summarizeRun(projectDir, runId) {
     inputTokens: 0,
     cachedInputTokens: 0,
     uncachedInputTokens: 0,
+    cacheWriteTokens: 0,
     outputTokens: 0,
     reasoningOutputTokens: 0,
   });
@@ -292,12 +338,18 @@ export function printSummary(summary) {
   console.log(`Build Time: ${formatDuration(summary.build.totalSeconds)}`);
   console.log(`Build Price-ish Tokens: ${formatCount(summary.build.priceishTokens)}`);
   if (summary.build.tokenStats.inputTokens) {
-    console.log(`Build Token Detail: uncached input ${formatCount(summary.build.tokenStats.uncachedInputTokens)} | cached input ${formatCount(summary.build.tokenStats.cachedInputTokens)} | output ${formatCount(summary.build.tokenStats.outputTokens)} | reasoning ${formatCount(summary.build.tokenStats.reasoningOutputTokens)} | raw input ${formatCount(summary.build.tokenStats.inputTokens)}`);
+    const cacheWrite = summary.build.tokenStats.cacheWriteTokens
+      ? ` | cache write ${formatCount(summary.build.tokenStats.cacheWriteTokens)}`
+      : "";
+    console.log(`Build Token Detail: uncached input ${formatCount(summary.build.tokenStats.uncachedInputTokens)} | cached input ${formatCount(summary.build.tokenStats.cachedInputTokens)}${cacheWrite} | output ${formatCount(summary.build.tokenStats.outputTokens)} | reasoning ${formatCount(summary.build.tokenStats.reasoningOutputTokens)} | raw input ${formatCount(summary.build.tokenStats.inputTokens)}`);
   }
   if (summary.prdTokens != null) {
     console.log(`PRD Price-ish Tokens: ${formatCount(summary.prdTokens)}`);
     if (summary.prdTokenStats?.inputTokens) {
-      console.log(`PRD Token Detail: uncached input ${formatCount(summary.prdTokenStats.uncachedInputTokens)} | cached input ${formatCount(summary.prdTokenStats.cachedInputTokens)} | output ${formatCount(summary.prdTokenStats.outputTokens)} | reasoning ${formatCount(summary.prdTokenStats.reasoningOutputTokens)} | raw input ${formatCount(summary.prdTokenStats.inputTokens)}`);
+      const cacheWrite = summary.prdTokenStats.cacheWriteTokens
+        ? ` | cache write ${formatCount(summary.prdTokenStats.cacheWriteTokens)}`
+        : "";
+      console.log(`PRD Token Detail: uncached input ${formatCount(summary.prdTokenStats.uncachedInputTokens)} | cached input ${formatCount(summary.prdTokenStats.cachedInputTokens)}${cacheWrite} | output ${formatCount(summary.prdTokenStats.outputTokens)} | reasoning ${formatCount(summary.prdTokenStats.reasoningOutputTokens)} | raw input ${formatCount(summary.prdTokenStats.inputTokens)}`);
     }
     console.log(`End-to-end Price-ish Tokens: ${formatCount(summary.totals.priceishTokens)}`);
   }
@@ -313,7 +365,7 @@ export function printSummary(summary) {
     const priceishTokens = tokenStats?.priceishTokens || tokenStats?.totalTokens || item.tokens;
     const tokenText = priceishTokens == null ? "unknown" : formatCount(priceishTokens);
     const detail = tokenStats?.inputTokens
-      ? ` | uncached input ${formatCount(tokenStats.uncachedInputTokens)} | cached input ${formatCount(tokenStats.cachedInputTokens)} | output ${formatCount(tokenStats.outputTokens)} | reasoning ${formatCount(tokenStats.reasoningOutputTokens)}`
+      ? ` | uncached input ${formatCount(tokenStats.uncachedInputTokens)} | cached input ${formatCount(tokenStats.cachedInputTokens)}${tokenStats.cacheWriteTokens ? ` | cache write ${formatCount(tokenStats.cacheWriteTokens)}` : ""} | output ${formatCount(tokenStats.outputTokens)} | reasoning ${formatCount(tokenStats.reasoningOutputTokens)}`
       : "";
     console.log(`- ${item.iteration}. ${item.storyId} | ${formatDuration(item.durationSeconds)} | ${tokenText} price-ish tokens | ${item.status}${detail}`);
   }

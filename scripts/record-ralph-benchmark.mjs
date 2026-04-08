@@ -109,15 +109,17 @@ function normalizeTokenStats(stats) {
   const inputTokens = Number(stats?.inputTokens || 0);
   const cachedInputTokens = Number(stats?.cachedInputTokens || 0);
   const uncachedInputTokens = Number(stats?.uncachedInputTokens || 0);
+  const cacheWriteTokens = Number(stats?.cacheWriteTokens || 0);
   const outputTokens = Number(stats?.outputTokens || 0);
   const reasoningOutputTokens = Number(stats?.reasoningOutputTokens || 0);
   const rawPriceish = Number(stats?.priceishTokens || stats?.totalTokens || 0);
-  const priceishTokens = rawPriceish || (uncachedInputTokens + outputTokens + reasoningOutputTokens);
+  const priceishTokens = rawPriceish || (uncachedInputTokens + cacheWriteTokens + outputTokens + reasoningOutputTokens);
   return {
     priceishTokens,
     inputTokens,
     cachedInputTokens,
     uncachedInputTokens,
+    cacheWriteTokens,
     outputTokens,
     reasoningOutputTokens,
   };
@@ -137,8 +139,10 @@ function buildRecord(benchmarkId, definition, summary, notes) {
     recordedAt: new Date().toISOString(),
     projectName: path.basename(summary.projectDir),
     runId: summary.runId,
+    agentKind: summary.iterations[0]?.metrics?.agentKind || process.env.RALPH_AGENT_KIND || "unknown",
     backend: summary.iterations[0]?.metrics?.backend || summary.iterations[0]?.backend || "unknown",
-    model: extractField(firstLog, "model") || "unknown",
+    provider: summary.iterations[0]?.metrics?.provider || extractField(firstLog, "Provider") || "unknown",
+    model: summary.iterations[0]?.metrics?.model || extractField(firstLog, "Model") || "unknown",
     reasoningEffort: extractField(firstLog, "reasoning effort") || "unknown",
     ralphBranch: git.branch,
     ralphCommit: git.commit,
@@ -181,7 +185,9 @@ function writeLatestMarkdown(record, previous) {
     `- Recorded: ${record.recordedAt}`,
     `- Ralph Branch: ${record.ralphBranch || "unknown"}`,
     `- Ralph Commit: ${record.ralphCommit || "unknown"}`,
+    `- Agent: ${record.agentKind || "unknown"}`,
     `- Backend: ${record.backend}`,
+    `- Provider: ${record.provider || "unknown"}`,
     `- Model: ${record.model}`,
     `- Reasoning Effort: ${record.reasoningEffort}`,
     `- Build Time: ${formatDuration(record.buildSeconds)}`,
@@ -193,6 +199,7 @@ function writeLatestMarkdown(record, previous) {
     "",
     `- Build uncached input: ${formatCount(record.buildTokenStats.uncachedInputTokens)}`,
     `- Build cached input: ${formatCount(record.buildTokenStats.cachedInputTokens)}`,
+    `- Build cache write: ${formatCount(record.buildTokenStats.cacheWriteTokens)}`,
     `- Build output: ${formatCount(record.buildTokenStats.outputTokens)}`,
     `- Build reasoning: ${formatCount(record.buildTokenStats.reasoningOutputTokens)}`,
     `- Build raw input footprint: ${formatCount(record.buildTokenStats.inputTokens)}`,
@@ -226,7 +233,8 @@ function printSummary(record, previous, historyFile, latestFile) {
   console.log(`Build Time: ${formatDuration(record.buildSeconds)}`);
   console.log(`Build Price-ish Tokens: ${formatCount(record.buildPriceishTokens)}`);
   console.log(`End-to-end Price-ish Tokens: ${formatCount(record.totalPriceishTokens)}`);
-  console.log(`Build Token Detail: uncached input ${formatCount(record.buildTokenStats.uncachedInputTokens)} | cached input ${formatCount(record.buildTokenStats.cachedInputTokens)} | output ${formatCount(record.buildTokenStats.outputTokens)} | reasoning ${formatCount(record.buildTokenStats.reasoningOutputTokens)} | raw input ${formatCount(record.buildTokenStats.inputTokens)}`);
+  console.log(`Agent: ${record.agentKind} | backend ${record.backend} | provider ${record.provider} | model ${record.model}`);
+  console.log(`Build Token Detail: uncached input ${formatCount(record.buildTokenStats.uncachedInputTokens)} | cached input ${formatCount(record.buildTokenStats.cachedInputTokens)} | cache write ${formatCount(record.buildTokenStats.cacheWriteTokens)} | output ${formatCount(record.buildTokenStats.outputTokens)} | reasoning ${formatCount(record.buildTokenStats.reasoningOutputTokens)} | raw input ${formatCount(record.buildTokenStats.inputTokens)}`);
   if (previous) {
     console.log(`Vs Previous Build Time: ${formatDelta(record.buildSeconds, previous.buildSeconds)}s`);
     console.log(`Vs Previous Build Price-ish Tokens: ${formatDelta(record.buildPriceishTokens, previous.buildPriceishTokens)}`);

@@ -18,6 +18,7 @@ function run(cmd, args, options = {}) {
 }
 
 const agents = [
+  { name: "pi", bin: "pi" },
   { name: "codex", bin: "codex" },
   { name: "claude", bin: "claude" },
   { name: "droid", bin: "droid" },

@@ -13,8 +13,10 @@
 # CONTEXT_REF=".agents/ralph/references/CONTEXT_ENGINEERING.md"
 # ACTIVITY_CMD=".agents/ralph/log-activity.sh"
 # AGENT_CMD defaults are defined in agents.sh. Override here if needed.
+# AGENT_CMD="pi --mode json --print --thinking medium --no-session"
 # AGENT_CMD="codex exec --yolo --skip-git-repo-check -"
 # PRD_AGENT_CMD defaults are defined in agents.sh (interactive).
+# PRD_AGENT_CMD="pi --mode json --print --thinking medium --no-session"
 # PRD_AGENT_CMD="codex --yolo --skip-git-repo-check {prompt}"
 # AGENT_CMD="claude -p --dangerously-skip-permissions \"\$(cat {prompt})\""
 # AGENT_CMD="droid exec --skip-permissions-unsafe -f {prompt}"

@@ -12,6 +12,8 @@ ralph overview
 Agent override:
 
 ```bash
+ralph ping --agent=pi # check agent is installed + responsive
+ralph build 1 --agent=pi # one Ralph run
 ralph ping --agent=codex # check agent is installed + responsive
 ralph build 1 --agent=codex # one Ralph run
 ralph build 1 --agent=claude # one Ralph run

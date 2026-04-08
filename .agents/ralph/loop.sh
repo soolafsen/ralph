@@ -51,21 +51,27 @@ if [ -f "$CONFIG_FILE" ]; then
   . "$CONFIG_FILE"
 fi
 
-DEFAULT_AGENT_NAME="${DEFAULT_AGENT:-codex}"
+DEFAULT_AGENT_NAME="${DEFAULT_AGENT:-pi}"
 resolve_agent_cmd() {
   local name="$1"
   case "$name" in
+    pi)
+      echo "${AGENT_PI_CMD:-pi --mode json --print --thinking medium --no-session}"
+      ;;
     claude)
       echo "${AGENT_CLAUDE_CMD:-claude -p --dangerously-skip-permissions \"\$(cat {prompt})\"}"
       ;;
     droid)
       echo "${AGENT_DROID_CMD:-droid exec --skip-permissions-unsafe -f {prompt}}"
       ;;
+    opencode)
+      echo "${AGENT_OPENCODE_CMD:-opencode run \"\$(cat {prompt})\"}"
+      ;;
     codex|"")
       echo "${AGENT_CODEX_CMD:-codex exec --yolo --skip-git-repo-check -}"
       ;;
     *)
-      echo "${AGENT_CODEX_CMD:-codex exec --yolo --skip-git-repo-check -}"
+      echo "${AGENT_PI_CMD:-pi --mode json --print --thinking medium --no-session}"
       ;;
   esac
 }
@@ -149,6 +155,9 @@ require_agent() {
   if ! command -v "$agent_bin" >/dev/null 2>&1; then
     echo "Agent command not found: $agent_bin"
     case "$agent_bin" in
+      pi)
+        echo "Install: npm i -g @mariozechner/pi-coding-agent"
+        ;;
       codex)
         echo "Install: npm i -g @openai/codex"
         ;;

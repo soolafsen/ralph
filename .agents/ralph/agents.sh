@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Default agent command templates (used by loop.sh and CLI).
 
+AGENT_PI_CMD="pi --mode json --print --thinking medium --no-session"
+AGENT_PI_INTERACTIVE_CMD="pi --mode json --print --thinking medium --no-session"
 AGENT_CODEX_CMD="codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" -"
 AGENT_CODEX_INTERACTIVE_CMD="codex exec --yolo --skip-git-repo-check -c model_reasoning_effort=\"medium\" {prompt}"
 AGENT_CLAUDE_CMD="claude -p --dangerously-skip-permissions \"\$(cat {prompt})\""
@@ -12,4 +14,4 @@ AGENT_OPENCODE_INTERACTIVE_CMD="opencode --prompt {prompt}"
 # Uncomment to use server mode (faster, avoids cold boot):
 # AGENT_OPENCODE_CMD="opencode run --attach http://localhost:4096 \"\$(cat {prompt})\""
 # AGENT_OPENCODE_INTERACTIVE_CMD="opencode --prompt {prompt} --attach http://localhost:4096"
-DEFAULT_AGENT="codex"
+DEFAULT_AGENT="pi"

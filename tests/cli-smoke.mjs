@@ -43,6 +43,20 @@ run(process.execPath, [cliPath, "--help"]);
 const projectRoot = mkdtempSync(path.join(tmpdir(), "ralph-cli-"));
 try {
   const outPath = path.join(projectRoot, "prd.json");
+  mkdirSync(path.join(projectRoot, ".agents", "skills", "prd"), { recursive: true });
+  writeFileSync(
+    path.join(projectRoot, ".agents", "skills", "prd", "SKILL.md"),
+    [
+      "---",
+      "name: prd",
+      "description: Test-only PRD skill stub.",
+      "---",
+      "",
+      "# PRD",
+      "",
+      "Smoke test stub.",
+    ].join("\n"),
+  );
   const mockPrdAgentPath = path.join(projectRoot, "mock-prd-agent.cjs");
   writeFileSync(
     mockPrdAgentPath,

@@ -106,6 +106,14 @@ function delta(current, previous) {
 function printSuite(summary) {
   console.log(`Suite: ${summary.suite.id} (${summary.suite.name})`);
   console.log(`Benchmarks: ${summary.benchmarks.map((item) => item.definition.id).join(", ")}`);
+  const currentAgents = Array.from(new Set(summary.benchmarks.map((item) => item.current?.agentKind).filter(Boolean)));
+  const currentModels = Array.from(new Set(summary.benchmarks.map((item) => item.current?.model).filter(Boolean)));
+  if (currentAgents.length) {
+    console.log(`Current Agent: ${currentAgents.join(", ")}`);
+  }
+  if (currentModels.length) {
+    console.log(`Current Model: ${currentModels.join(", ")}`);
+  }
   console.log(`Build Time: ${formatDuration(summary.totals.current.buildSeconds)}`);
   console.log(`Build Price-ish Tokens: ${formatCount(summary.totals.current.buildPriceishTokens)}`);
   console.log(`End-to-end Price-ish Tokens: ${formatCount(summary.totals.current.totalPriceishTokens)}`);
@@ -122,7 +130,7 @@ function printSuite(summary) {
       console.log(`- ${item.definition.id} | no history yet`);
       continue;
     }
-    console.log(`- ${item.definition.id} | ${formatDuration(Number(item.current.buildSeconds || 0))} | build ${formatCount(Number(item.current.buildPriceishTokens || 0))} | total ${formatCount(Number(item.current.totalPriceishTokens || 0))} | runs ${item.historyCount}`);
+    console.log(`- ${item.definition.id} | agent ${item.current.agentKind || "unknown"} | ${formatDuration(Number(item.current.buildSeconds || 0))} | build ${formatCount(Number(item.current.buildPriceishTokens || 0))} | total ${formatCount(Number(item.current.totalPriceishTokens || 0))} | runs ${item.historyCount}`);
   }
 }
 
@@ -133,6 +141,7 @@ function writeLatestSuiteMarkdown(summary) {
     "",
     `- Suite ID: ${summary.suite.id}`,
     `- Benchmarks: ${summary.benchmarks.map((item) => item.definition.id).join(", ")}`,
+    `- Current Agent: ${Array.from(new Set(summary.benchmarks.map((item) => item.current?.agentKind).filter(Boolean))).join(", ") || "unknown"}`,
     `- Build Time: ${formatDuration(summary.totals.current.buildSeconds)}`,
     `- Build Price-ish Tokens: ${formatCount(summary.totals.current.buildPriceishTokens)}`,
     `- End-to-end Price-ish Tokens: ${formatCount(summary.totals.current.totalPriceishTokens)}`,
@@ -146,7 +155,7 @@ function writeLatestSuiteMarkdown(summary) {
       lines.push(`- ${item.definition.id}: no history yet`);
       continue;
     }
-    lines.push(`- ${item.definition.id}: ${formatDuration(Number(item.current.buildSeconds || 0))} | build ${formatCount(Number(item.current.buildPriceishTokens || 0))} | total ${formatCount(Number(item.current.totalPriceishTokens || 0))} | runs ${item.historyCount}`);
+    lines.push(`- ${item.definition.id}: agent ${item.current.agentKind || "unknown"} | ${formatDuration(Number(item.current.buildSeconds || 0))} | build ${formatCount(Number(item.current.buildPriceishTokens || 0))} | total ${formatCount(Number(item.current.totalPriceishTokens || 0))} | runs ${item.historyCount}`);
   }
   const filePath = path.join(latestDir, `suite-${summary.suite.id}.md`);
   fs.writeFileSync(filePath, `${lines.join("\n")}\n`);

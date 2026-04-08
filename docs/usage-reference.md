@@ -65,7 +65,7 @@ ralph build 1 --tiny
 
 Practical effects of `--tiny`:
 
-- biases Codex toward the shortest valid implementation
+- biases the active agent toward the shortest valid implementation
 - reduces unnecessary scaffolding, ceremony, and extra documentation
 - skips progress snapshot context in the slimmer loop path
 - helps keep trivial tasks from getting over-engineered while preserving the normal Ralph loop
@@ -103,7 +103,7 @@ Ralph can run from bundled defaults or from a repo-local `.agents/ralph` copy.
 - if a repo contains `.agents/ralph`, that local copy overrides the bundled global install for that repo
 - after upgrading the global CLI, run `ralph install --force` in repos that should pick up the refreshed local templates
 - `ralph install --skills` installs the bundled skills for the agent scope you choose
-- for Codex, the `prd` skill must exist before `ralph prd` can generate PRDs reliably
+- for Pi or Codex, the `prd` skill must exist before `ralph prd` can generate PRDs reliably
 
 ## Output Mode
 
@@ -158,8 +158,9 @@ That means stories stuck in `in_progress` for more than 5 minutes are reopened a
 
 ## Agent Runner
 
-This fork is tuned for Codex first, but the agent map still supports:
+This branch defaults to Pi, but the agent map still supports:
 
+- `pi`
 - `codex`
 - `claude`
 - `droid`
@@ -168,11 +169,13 @@ This fork is tuned for Codex first, but the agent map still supports:
 Example:
 
 ```bash
+ralph prd --agent=pi
+ralph build 1 --agent=pi
 ralph prd --agent=codex
 ralph build 1 --agent=codex
 ```
 
-The Codex defaults in this fork use `codex exec`.
+The Pi defaults in this branch use `pi --mode json --print --no-session`.
 
 You can override the Codex backend selection with:
 
@@ -187,7 +190,8 @@ set RALPH_CODEX_BACKEND=cli
 Important Windows-specific behavior in this fork:
 
 - `ralph build` and `ralph prd` use a native Node supervisor on Windows
-- on Windows with Codex, Ralph prefers `@openai/codex-sdk` for structured events, token usage, and cancellation
+- on Windows with Pi, Ralph reads Pi's JSON event stream directly for completion markers, model metadata, and token usage
+- on Windows with Codex, Ralph still prefers `@openai/codex-sdk` for structured events, token usage, and cancellation
 - if the SDK cannot be used and `RALPH_CODEX_BACKEND=auto`, Ralph falls back to the legacy CLI path and records the fallback
 - the supervisor watches for `<promise>COMPLETE</promise>` and can terminate lingering child trees after a short grace period
 - local frontend checks should use Ralph's direct Playwright helper in one-shot `serve-and-run` mode by default

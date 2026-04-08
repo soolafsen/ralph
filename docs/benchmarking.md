@@ -105,6 +105,8 @@ ralph bench:smoke
 ralph bench:quick
 ralph bench:hourly
 ralph bench:deep
+node scripts/run-ralph-benchmark-suite.mjs --suite quick --agent codex
+node scripts/run-ralph-benchmark-suite.mjs --suite quick --agent pi
 ```
 
 If Windows leaves a benchmark workspace locked after a failed or interrupted suite, you can rerun a suite against a fresh workspace root:
@@ -153,5 +155,6 @@ At minimum, compare:
 Benchmark history uses **price-ish tokens** as the primary metric:
 
 - `price-ish = uncached input + output + reasoning`
+- for Pi JSON logs, `cache write` is also counted when the provider reports it
 - cached input is stored separately as prompt reuse detail
 - raw input is stored separately as prompt footprint detail
