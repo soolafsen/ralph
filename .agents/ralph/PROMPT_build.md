@@ -48,6 +48,8 @@ If the story block is empty, stop and report that the story could not be parsed.
 - Do not ask the user questions.
 - Do not edit the PRD JSON directly.
 - Read only the files needed for this story.
+- Treat `.ralph/` as harness state, not project source, except for the specific progress, recipes, and strategy snapshot files already listed above.
+- Do not inspect the current run log, run summary, metrics, reflection files, or anything under `.ralph/runs/` unless you are explicitly debugging a failed prior iteration.
 - Keep changes minimal and relevant.
 - If {{NO_COMMIT}} is true, do not commit or push.
 - Update {{AGENTS_PATH}} or `README.md` only when run/build/test instructions are missing or changed.

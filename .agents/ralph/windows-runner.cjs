@@ -1459,7 +1459,64 @@ function readLogTail(logFile, maxBytes = completeMarkerTailBytes) {
   }
 }
 
+function isPiJsonLog(logFile) {
+  if (!exists(logFile)) return false;
+  const fd = fs.openSync(logFile, "r");
+  let head = "";
+  try {
+    const buffer = Buffer.alloc(512);
+    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+    head = buffer.slice(0, bytesRead).toString("utf-8");
+  } finally {
+    fs.closeSync(fd);
+  }
+  const firstLine = head.split(/\r?\n/, 1)[0] || "";
+  if (!firstLine || firstLine[0] !== "{") return false;
+  try {
+    const data = JSON.parse(firstLine);
+    return data?.type === "session" && typeof data?.cwd === "string";
+  } catch {
+    return false;
+  }
+}
+
+function piMessageContentHasCompletionMarker(message) {
+  if (!message || message.role !== "assistant") return false;
+  const content = Array.isArray(message.content) ? message.content : [];
+  for (const part of content) {
+    if (part?.type === "text" && typeof part.text === "string" && part.text.includes(completeMarker)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function piJsonTailHasAssistantCompletionMarker(logFile) {
+  const scan = (text) => {
+    if (!text) return false;
+    const lines = text.split(/\r?\n/);
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const line = lines[i];
+      if (!line || line[0] !== "{") continue;
+      try {
+        const data = JSON.parse(line);
+        if (piMessageContentHasCompletionMarker(data?.message)) return true;
+        if (piMessageContentHasCompletionMarker(data?.assistantMessageEvent?.message)) return true;
+        if (piMessageContentHasCompletionMarker(data?.assistantMessageEvent?.partial)) return true;
+      } catch {}
+    }
+    return false;
+  };
+
+  const tail = readLogTail(logFile);
+  if (scan(tail)) return true;
+  return exists(logFile) && scan(fs.readFileSync(logFile, "utf-8"));
+}
+
 function tailHasStandaloneCompletionMarker(logFile) {
+  if (isPiJsonLog(logFile)) {
+    return piJsonTailHasAssistantCompletionMarker(logFile);
+  }
   const tail = readLogTail(logFile);
   if (!tail) return false;
   if (tail.includes(completeMarker)) return true;
@@ -1990,7 +2047,7 @@ async function runBuild() {
       };
     }
     const logBytes = exists(logFile) ? fs.statSync(logFile).size : 0;
-    const statusLabel = interrupted ? "interrupted" : result.status !== 0 ? "error" : "success";
+    const statusLabel = storyOutcomeStatus;
     const progressEntry = findProgressEntryForIteration(runTag, iteration);
     const verificationSummary = buildVerificationSummary(progressEntry);
     const progressHints = splitProgressHints(progressEntry);
