@@ -208,7 +208,7 @@ function runAutoFallbackSmoke() {
   }
   const projectRoot = setupTempProject();
   try {
-    const mockAgentPath = path.join(projectRoot, "mock-cli-agent.cmd");
+    const mockAgentPath = path.join(projectRoot, "codex.cmd");
     writeFileSync(
       mockAgentPath,
       [
@@ -233,7 +233,8 @@ function runAutoFallbackSmoke() {
         RALPH_AGENT_KIND: "codex",
         RALPH_AGENT_COMMAND_SOURCE: "map",
         RALPH_TEST_CODEX_SDK_MOCK: "startup_error",
-        AGENT_CMD: `${mockAgentPath} {prompt}`,
+        AGENT_CMD: "codex exec {prompt}",
+        PATH: `${projectRoot};${process.env.PATH || ""}`,
       },
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -251,10 +252,60 @@ function runAutoFallbackSmoke() {
   }
 }
 
+function runMappedCustomCommandSmoke() {
+  if (process.platform !== "win32") {
+    console.log("Skipping mapped custom command smoke test on non-Windows.");
+    return;
+  }
+  const projectRoot = setupTempProject();
+  try {
+    const mockAgentPath = path.join(projectRoot, "mock-mapped-agent.cmd");
+    writeFileSync(
+      mockAgentPath,
+      [
+        "@echo off",
+        "echo mapped custom cli agent",
+        "echo ^<run_instructions^>",
+        "echo npm test",
+        "echo ^</run_instructions^>",
+        "echo ^<promise^>COMPLETE^</promise^>",
+        "echo tokens used",
+        "echo 17",
+      ].join("\r\n"),
+    );
+
+    const result = run(process.execPath, [runnerPath, "build", "1", "--no-commit"], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        RALPH_ROOT: projectRoot,
+        RALPH_QUIET: "1",
+        RALPH_CODEX_BACKEND: "auto",
+        RALPH_AGENT_KIND: "codex",
+        RALPH_AGENT_COMMAND_SOURCE: "map",
+        RALPH_TEST_CODEX_SDK_MOCK: "success",
+        AGENT_CMD: `${mockAgentPath} {prompt}`,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.equal(readPrdStatus(projectRoot), "done");
+    const { metrics, logFile, reflection } = latestRunArtifacts(projectRoot);
+    assert.equal(metrics.backend, "cli");
+    assert.equal(reflection.backend, "cli");
+    assert.equal(reflection.recoveryUsed || "", "");
+    const logText = readFileSync(logFile, "utf-8");
+    assert.doesNotMatch(logText, /backend: sdk/);
+    assert.match(logText, /mapped custom cli agent/i);
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+}
+
 await runSelectionTests();
 runDoctorSmoke();
 runSdkSuccessSmoke();
 runSdkCompletionHangSmoke();
 runAutoFallbackSmoke();
+runMappedCustomCommandSmoke();
 
 console.log("Codex SDK backend tests passed.");

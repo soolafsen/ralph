@@ -252,6 +252,17 @@ function stageHelperWrappers() {
 }
 
 function commandExists(command) {
+  const candidate = String(command || "").trim();
+  if (!candidate) return false;
+  if (
+    path.isAbsolute(candidate) ||
+    candidate.startsWith(".\\") ||
+    candidate.startsWith("./") ||
+    candidate.startsWith("..\\") ||
+    candidate.startsWith("../")
+  ) {
+    return exists(candidate);
+  }
   const result = spawnSync("where", [command], {
     stdio: "ignore",
     shell: false,
@@ -275,17 +286,7 @@ function splitCommand(command) {
   const parts = [];
   let current = "";
   let quote = null;
-  let escaping = false;
   for (const char of String(command || "")) {
-    if (escaping) {
-      current += char;
-      escaping = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaping = true;
-      continue;
-    }
     if (quote) {
       if (char === quote) {
         quote = null;
@@ -315,8 +316,12 @@ function appendLine(filePath, line) {
   fs.appendFileSync(filePath, `${line}\n`);
 }
 
+function stripUtf8Bom(text) {
+  return String(text || "").replace(/^\uFEFF/, "");
+}
+
 function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  return JSON.parse(stripUtf8Bom(fs.readFileSync(filePath, "utf-8")));
 }
 
 function writeJson(filePath, data) {
@@ -1468,14 +1473,24 @@ function killProcessTree(pid, force) {
 }
 
 async function resolveCodexBackendForRun() {
+  return resolveCodexBackendForRunForCommand("");
+}
+
+function commandUsesCodex(agentCommand) {
+  const [agentBin] = splitCommand(agentCommand);
+  return String(agentBin || "").trim().toLowerCase() === "codex";
+}
+
+async function resolveCodexBackendForRunForCommand(agentCommand) {
   return resolveCodexBackend({
     platform: process.platform,
     env: process.env,
+    agentKind: commandUsesCodex(agentCommand) ? (process.env.RALPH_AGENT_KIND || "codex") : "custom",
   });
 }
 
 async function requireConfiguredAgent(agentCommand) {
-  const backend = await resolveCodexBackendForRun();
+  const backend = await resolveCodexBackendForRunForCommand(agentCommand);
   if (backend.error) {
     console.error(backend.error);
     process.exit(1);
@@ -1654,7 +1669,7 @@ async function runSdkAgentCommand(promptPath, logFile, label) {
 }
 
 async function runAgentCommand(agentCommand, promptPath, logFile, label) {
-  const backend = await resolveCodexBackendForRun();
+  const backend = await resolveCodexBackendForRunForCommand(agentCommand);
   if (backend.error) {
     fs.writeFileSync(logFile, `${backend.error}\n`);
     return {

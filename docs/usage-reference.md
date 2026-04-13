@@ -105,6 +105,43 @@ Ralph can run from bundled defaults or from a repo-local `.agents/ralph` copy.
 - `ralph install --skills` installs the bundled skills for the agent scope you choose
 - for Codex, the `prd` skill must exist before `ralph prd` can generate PRDs reliably
 
+## PRD Input And Overview
+
+`ralph prd` can work from a direct request or from a plan file already in the repo.
+
+- `ralph prd "Add a lightweight JSON CLI"` sends that request directly to the PRD generator
+- `ralph prd --plan plan.md` uses the explicit plan file you pass
+- plain `ralph prd` will look for `cursor-plan.md`, `plan.md`, and `*.plan.md` in the repo root before falling back to manual entry
+- `--out` can point to either a target file or a target directory for the generated PRD JSON
+
+If you want a readable status view of an existing PRD, use:
+
+```bash
+ralph overview
+ralph overview --prd .agents/tasks/prd.json
+```
+
+`ralph overview` writes a sibling `*.overview.md` file that summarizes story counts, quality gates, and current story statuses.
+
+## Health Checks
+
+Useful low-cost checks before longer runs:
+
+```bash
+ralph ping
+ralph doctor
+```
+
+`ralph ping` is the smallest agent health check. It verifies that the selected agent can answer with the expected sentinel response.
+
+`ralph doctor` prints the local runner prerequisites and environment details Ralph cares about, including:
+
+- Codex CLI availability
+- Codex SDK availability and selected backend
+- Codex backend fallback reason, if any
+- Python availability in PowerShell and optional Git Bash helpers
+- bundled templates, skills, and detected plan files
+
 ## Output Mode
 
 Terse progress output is now the default for `ralph prd` and `ralph build`.
@@ -182,6 +219,14 @@ set RALPH_CODEX_BACKEND=sdk
 set RALPH_CODEX_BACKEND=cli
 ```
 
+On Codex, Ralph also defaults these execution settings unless you override them yourself:
+
+```bash
+set RALPH_CODEX_MODEL_REASONING_EFFORT=medium
+set RALPH_CODEX_APPROVAL_POLICY=never
+set RALPH_CODEX_SANDBOX_MODE=danger-full-access
+```
+
 ## Windows Notes
 
 Important Windows-specific behavior in this fork:
@@ -189,6 +234,7 @@ Important Windows-specific behavior in this fork:
 - `ralph build` and `ralph prd` use a native Node supervisor on Windows
 - on Windows with Codex, Ralph prefers `@openai/codex-sdk` for structured events, token usage, and cancellation
 - if the SDK cannot be used and `RALPH_CODEX_BACKEND=auto`, Ralph falls back to the legacy CLI path and records the fallback
+- successful SDK-backed runs record thread/session details in the run log and metrics artifacts
 - the supervisor watches for `<promise>COMPLETE</promise>` and can terminate lingering child trees after a short grace period
 - local frontend checks should use Ralph's direct Playwright helper in one-shot `serve-and-run` mode by default
 

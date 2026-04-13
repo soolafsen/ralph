@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+function stripUtf8Bom(text) {
+  return String(text || "").replace(/^\uFEFF/, "");
+}
+
 function withWindowsHide(options = {}) {
   return process.platform === "win32" ? { ...options, windowsHide: true } : options;
 }
@@ -101,7 +105,7 @@ try {
     console.error("PRD smoke test failed: output not created.");
     process.exit(1);
   }
-  const generatedPrd = JSON.parse(readFileSync(outPath, "utf-8"));
+  const generatedPrd = JSON.parse(stripUtf8Bom(readFileSync(outPath, "utf-8")));
   assert.equal(Array.isArray(generatedPrd.stories), true);
   assert.ok(generatedPrd.stories.length >= 2);
   for (const story of generatedPrd.stories) {

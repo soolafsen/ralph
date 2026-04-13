@@ -166,19 +166,19 @@ def build():
 
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_background(slide)
-    add_top_bar(slide, "Ralph overview")
+    add_top_bar(slide, "Ralph oversikt")
     add_title(
         slide,
-        "What Ralph is",
-        "A short intro to the Ralph coding loop and what is specific to this repo.",
+        "Hva Ralph er",
+        "En kort intro til Ralph-løkken og hva som er spesielt med dette repoet.",
     )
-    add_center_callout(slide, "File-based agent loop\nfor autonomous coding")
+    add_center_callout(slide, "Filbasert agentløkke\nfor autonom koding")
     add_bullets(
         slide,
         [
-            "Ralph is a resumable, PRD-driven coding loop rather than a one-off chat prompt.",
-            "It works one story at a time in a single-agent, multi-iteration flow.",
-            "State, logs, and progress live on disk, which makes longer runs easier to resume and inspect.",
+            "Ralph er en gjenopptakbar, PRD-drevet kodingsløkke, ikke bare en enkelt chat-prompt.",
+            "Den jobber med én story om gangen i en enagent-flyt med flere iterasjoner.",
+            "Tilstand, logger og fremdrift lagres på disk, noe som gjør lange kjøringer enklere å gjenoppta og inspisere.",
         ],
         0.8,
         2.35,
@@ -189,16 +189,16 @@ def build():
 
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_background(slide)
-    add_top_bar(slide, "How Ralph is used")
-    add_title(slide, "Where Ralph fits best", "It is most useful when you want durable progress over several steps.")
+    add_top_bar(slide, "Hvordan Ralph brukes")
+    add_title(slide, "Når Ralph passer best", "Det er mest nyttig når du vil ha varig fremdrift over flere steg.")
     add_card(slide, 0.7, 1.8, 5.8, 4.7)
-    add_card_title(slide, "Good use cases", 1.0, 2.05, 4.2)
+    add_card_title(slide, "Gode bruksområder", 1.0, 2.05, 4.2)
     add_small_bullets(
         slide,
         [
-            "Multi-step repo changes where work should survive across iterations.",
-            "PRD or plan-driven implementation with visible progress on disk.",
-            "Benchmarking, iterative cleanup, and agent loops that benefit from local logs.",
+            "Flerstegs repoendringer der arbeidet bør overleve på tvers av iterasjoner.",
+            "PRD- eller planstyrt implementering med synlig fremdrift på disk.",
+            "Benchmarking, iterativ opprydding og agentlokker som har nytte av lokale logger.",
         ],
         1.0,
         2.45,
@@ -206,13 +206,13 @@ def build():
         3.5,
     )
     add_card(slide, 6.85, 1.8, 5.8, 4.7)
-    add_card_title(slide, "Less ideal", 7.15, 2.05, 3.0)
+    add_card_title(slide, "Mindre egnet", 7.15, 2.05, 3.0)
     add_small_bullets(
         slide,
         [
-            "Tiny one-file edits where direct agent work is faster than creating a PRD.",
-            "Situations where no local verification or repo backpressure exists.",
-            "Tasks that do not benefit from resumability, logs, or bounded iteration loops.",
+            "Små endringer i én fil der direkte agentarbeid er raskere enn å lage en PRD.",
+            "Situasjoner uten lokal verifisering eller reelt tilbakepress fra repoet.",
+            "Oppgaver som ikke har nytte av gjenopptakbarhet, logger eller avgrensede iterasjoner.",
         ],
         7.15,
         2.45,
@@ -222,15 +222,15 @@ def build():
 
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     set_background(slide)
-    add_top_bar(slide, "This repo vs vanilla Ralph")
-    add_title(slide, "How this repo differs", "This fork is intentionally not stock Ralph.")
+    add_top_bar(slide, "Denne repoen vs vanilla Ralph")
+    add_title(slide, "Hvordan denne repoen skiller seg ut", "Denne forken er bevisst ikke standard Ralph.")
     add_bullets(
         slide,
         [
-            "Windows-first Codex runner behavior, including SDK-backed supervision and quieter helper handling.",
-            "Fresh per-iteration context plus bounded progress, recipe, and strategy memory to reduce context rot.",
-            "Deterministic benchmark suites such as smoke, quick, hourly, and deep for repeatable tuning.",
-            "Long-run resilience features like heartbeat output, hang recovery, and built-in local verification paths.",
+            "Windows-først Codex-runner, inkludert SDK-basert supervisjon og roligere håndtering av hjelpeprosesser.",
+            "Fersk kontekst per iterasjon, pluss avgrenset fremdrifts-, oppskrifts- og strategiminne for å redusere kontekstrot.",
+            "Deterministiske benchmark-suiter som smoke, quick, hourly og deep for repeterbar tuning.",
+            "Robusthet for lange kjøringer, som heartbeat-utskrift, hang recovery og innebygde lokale verifiseringsløp.",
         ],
         0.9,
         2.0,
@@ -238,12 +238,12 @@ def build():
         4.5,
     )
     add_card(slide, 8.95, 2.0, 3.5, 3.2)
-    add_card_title(slide, "Bottom line", 9.25, 2.25, 2.5)
+    add_card_title(slide, "Kort sagt", 9.25, 2.25, 2.5)
     add_small_bullets(
         slide,
         [
-            "Vanilla Ralph is the base loop idea.",
-            "This repo is tuned for Codex, Windows, benchmarking, and longer unattended runs.",
+            "Vanilla Ralph er grunnideen for løkken.",
+            "Denne repoen er tunet for Codex, Windows, benchmarking og lengre ubetjente kjøringer.",
         ],
         9.25,
         2.7,
