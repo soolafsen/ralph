@@ -18,6 +18,8 @@ Ralph keeps process state on disk so runs can resume cleanly and be audited afte
 - Operational sidecars live in `.ralph/`: `progress.md`, `activity.log`, `errors.log`, `guardrails.md`, and process manifests in `processes/*.json` for cleanup and stale-process handling.
 - Prompt injection from progress, recipe, and strategy memory is capped so learning stays useful without unbounded context growth.
 
+![Ralph process diagram](diagram.svg)
+
 ## Not Vanilla Ralph
 
 This fork intentionally incorporates ideas learned from GSD and lean-ctx work rather than staying as a stock Ralph loop.

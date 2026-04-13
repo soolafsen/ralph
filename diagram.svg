@@ -1,55 +1,135 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" role="img" aria-label="Ralph architecture diagram">
-  <style>
-    .bg { fill: #0f1218; }
-    .box { fill: #141a23; stroke: #e6e6e6; stroke-width: 1.5; }
-    .line { stroke: #e6e6e6; stroke-width: 1.5; }
-    .text { fill: #f3f3f3; font-family: Menlo, Consolas, Monaco, monospace; font-size: 16px; }
-    .small { font-size: 13px; opacity: 0.9; }
-    .muted { opacity: 0.7; }
-  </style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" role="img" aria-label="Ralph process diagram showing PRD checkpoints, iteration flow, run artifacts, and learning memory updates">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff8ef"/>
+      <stop offset="100%" stop-color="#eef7ff"/>
+    </linearGradient>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#b45309"/>
+      <stop offset="100%" stop-color="#0f766e"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,5 L0,10 z" fill="#334155" />
+    </marker>
+    <style>
+      .canvas { fill: url(#bg); }
+      .grain { fill: #ffffff; opacity: 0.3; }
+      .title { font: 700 34px "Space Grotesk", "Avenir Next", "Helvetica Neue", sans-serif; fill: #111827; }
+      .subtitle { font: 500 16px "IBM Plex Sans", "Avenir Next", "Helvetica Neue", sans-serif; fill: #334155; }
+      .lane { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
+      .node { fill: #ffffff; stroke: #94a3b8; stroke-width: 2; }
+      .node-title { font: 700 20px "Space Grotesk", "Avenir Next", "Helvetica Neue", sans-serif; fill: #0f172a; }
+      .node-text { font: 500 14px "IBM Plex Sans", "Avenir Next", "Helvetica Neue", sans-serif; fill: #334155; }
+      .chip { fill: #f1f5f9; stroke: #cbd5e1; stroke-width: 1; }
+      .chip-text { font: 600 12px "IBM Plex Sans", "Avenir Next", "Helvetica Neue", sans-serif; fill: #1e293b; }
+      .line-main { stroke: #334155; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .line-soft { stroke: #64748b; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .line-loop { stroke: #0f766e; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .line-check { stroke: #b45309; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .label { font: 600 12px "IBM Plex Sans", "Avenir Next", "Helvetica Neue", sans-serif; fill: #475569; }
+      .label-strong { fill: #0f766e; }
+      .label-warm { fill: #92400e; }
+      .footer { font: 600 13px "IBM Plex Sans", "Avenir Next", "Helvetica Neue", sans-serif; fill: #334155; }
+      .legend { font: 600 12px "IBM Plex Sans", "Avenir Next", "Helvetica Neue", sans-serif; fill: #1f2937; }
+    </style>
+  </defs>
 
-  <rect class="bg" x="0" y="0" width="1000" height="520" rx="0" />
+  <rect class="canvas" x="0" y="0" width="1280" height="760" rx="18"/>
+  <circle class="grain" cx="1180" cy="90" r="120"/>
+  <circle class="grain" cx="150" cy="650" r="140"/>
 
-  <!-- Top boxes -->
-  <rect class="box" x="390" y="30" width="220" height="44" rx="0" />
-  <text class="text" x="500" y="58" text-anchor="middle">ralph CLI</text>
+  <rect x="48" y="36" width="1184" height="78" rx="14" fill="url(#header)" opacity="0.1"/>
+  <text class="title" x="68" y="85">Ralph File-First Build Loop</text>
+  <text class="subtitle" x="68" y="108">Checkpointed PRD execution with explicit artifacts, reusable learning, and bounded context injection</text>
 
-  <rect class="box" x="240" y="114" width="520" height="48" rx="0" />
-  <text class="text small muted" x="500" y="144" text-anchor="middle">agent CLI: codex | claude | droid</text>
+  <rect class="lane" x="48" y="146" width="1184" height="198" rx="14"/>
+  <rect class="lane" x="48" y="366" width="1184" height="332" rx="14"/>
 
-  <!-- Arrow from top to agent (gap matches lower arrows) -->
-  <line class="line" x1="500" y1="74" x2="500" y2="96" />
-  <polygon points="496,96 500,104 504,96" fill="#e6e6e6" />
+  <text class="subtitle" x="66" y="172">Iteration Path</text>
+  <text class="subtitle" x="66" y="392">Artifacts And Learning</text>
 
-  <!-- Branch lines (gap for heads) -->
-  <line class="line" x1="500" y1="162" x2="500" y2="200" />
-  <line class="line" x1="500" y1="200" x2="280" y2="200" />
-  <line class="line" x1="500" y1="200" x2="720" y2="200" />
-  <line class="line" x1="280" y1="200" x2="280" y2="214" />
-  <line class="line" x1="720" y1="200" x2="720" y2="214" />
-  <polygon points="276,214 280,222 284,214" fill="#e6e6e6" />
-  <polygon points="716,214 720,222 724,214" fill="#e6e6e6" />
+  <rect class="node" x="70" y="188" width="230" height="126" rx="12"/>
+  <text class="node-title" x="90" y="220">1. Inputs</text>
+  <text class="node-text" x="90" y="246">- `.agents/tasks/prd.json`</text>
+  <text class="node-text" x="90" y="266">- repo files + `AGENTS.md`</text>
+  <text class="node-text" x="90" y="286">- mode flags (`--tiny`, etc.)</text>
 
-  <!-- Bottom boxes -->
-  <rect class="box" x="90" y="226" width="380" height="230" rx="0" />
-  <text class="text" x="110" y="256">.agents/ralph/</text>
-  <text class="text small muted" x="110" y="278">local overrides (optional)</text>
-  <text class="text small" x="110" y="306">loop.sh</text>
-  <text class="text small" x="110" y="328">PROMPT_build.md</text>
-  <text class="text small" x="110" y="350">references/</text>
-  <text class="text small" x="110" y="372">log-activity.sh</text>
-  <text class="text small" x="110" y="394">config.sh (optional)</text>
+  <rect class="node" x="338" y="188" width="240" height="126" rx="12"/>
+  <text class="node-title" x="358" y="220">2. Story Checkpoint</text>
+  <text class="node-text" x="358" y="246">- select next story</text>
+  <text class="node-text" x="358" y="266">- reopen stale `in_progress`</text>
+  <text class="node-text" x="358" y="286">- checkpoint status on disk</text>
 
-  <rect class="box" x="530" y="226" width="380" height="230" rx="0" />
-  <text class="text" x="550" y="256">.ralph/</text>
-  <text class="text small muted" x="550" y="278">state + logs</text>
-  <text class="text small" x="550" y="306">errors.log</text>
-  <text class="text small" x="550" y="328">progress.md</text>
-  <text class="text small" x="550" y="350">guardrails.md</text>
-  <text class="text small" x="550" y="372">activity.log</text>
-  <text class="text small" x="550" y="394">runs/</text>
+  <rect class="node" x="616" y="188" width="258" height="126" rx="12"/>
+  <text class="node-title" x="636" y="220">3. Prompt Assembly</text>
+  <text class="node-text" x="636" y="246">- progress snapshot</text>
+  <text class="node-text" x="636" y="266">- trusted recipes + strategy</text>
+  <text class="node-text" x="636" y="286">- byte/count context caps</text>
 
-  <text class="text small muted" x="500" y="500" text-anchor="middle">
-    Local templates override bundled defaults. State persists between runs.
-  </text>
+  <rect class="node" x="912" y="188" width="290" height="126" rx="12"/>
+  <text class="node-title" x="932" y="220">4. Execute And Verify</text>
+  <text class="node-text" x="932" y="246">- agent run for current story</text>
+  <text class="node-text" x="932" y="266">- tests/browser/checks</text>
+  <text class="node-text" x="932" y="286">- optional commit + mark done</text>
+
+  <path class="line-main" d="M300 251 L338 251"/>
+  <path class="line-main" d="M578 251 L616 251"/>
+  <path class="line-main" d="M874 251 L912 251"/>
+
+  <rect class="node" x="70" y="420" width="230" height="140" rx="12"/>
+  <text class="node-title" x="90" y="454">Progress Sidecars</text>
+  <text class="node-text" x="90" y="480">- `.ralph/progress.md`</text>
+  <text class="node-text" x="90" y="500">- `activity.log`, `errors.log`</text>
+  <text class="node-text" x="90" y="520">- `guardrails.md`, `processes/*.json`</text>
+
+  <rect class="node" x="338" y="420" width="240" height="140" rx="12"/>
+  <text class="node-title" x="358" y="454">Run Artifacts</text>
+  <text class="node-text" x="358" y="480">- `.ralph/runs/*.log`</text>
+  <text class="node-text" x="358" y="500">- `.md` summaries</text>
+  <text class="node-text" x="358" y="520">- `.metrics.json`</text>
+
+  <rect class="node" x="616" y="420" width="258" height="140" rx="12"/>
+  <text class="node-title" x="636" y="454">Reflection</text>
+  <text class="node-text" x="636" y="480">- `.reflection.json` per iteration</text>
+  <text class="node-text" x="636" y="500">- status, checks, reuse hints</text>
+  <text class="node-text" x="636" y="520">- token/timing evidence</text>
+
+  <rect class="node" x="912" y="420" width="290" height="140" rx="12"/>
+  <text class="node-title" x="932" y="454">Learned Memory</text>
+  <text class="node-text" x="932" y="480">- `knowledge/recipes/*.json`</text>
+  <text class="node-text" x="932" y="500">- `knowledge/strategy-stats.json`</text>
+  <text class="node-text" x="932" y="520">- trusted patterns for next runs</text>
+
+  <path class="line-soft" d="M1055 314 L1055 420"/>
+  <path class="line-soft" d="M458 560 L616 560"/>
+  <path class="line-soft" d="M874 490 L912 490"/>
+  <path class="line-soft" d="M578 490 L616 490"/>
+  <path class="line-soft" d="M300 490 L338 490"/>
+
+  <path class="line-loop" d="M1058 560 C1060 640, 770 680, 550 680 C390 680, 240 640, 210 584"/>
+  <text class="label label-strong" x="640" y="708">next iteration uses compact learned context</text>
+
+  <path class="line-check" d="M1090 188 C1130 140, 760 130, 460 140 C360 144, 348 168, 348 188"/>
+  <text class="label label-warm" x="702" y="132">checkpointed story status enables safe resume</text>
+
+  <rect class="chip" x="76" y="608" width="196" height="30" rx="8"/>
+  <text class="chip-text" x="88" y="628">Checkpoint: PRD story status</text>
+  <rect class="chip" x="290" y="608" width="184" height="30" rx="8"/>
+  <text class="chip-text" x="302" y="628">Evidence: run artifacts</text>
+  <rect class="chip" x="492" y="608" width="178" height="30" rx="8"/>
+  <text class="chip-text" x="504" y="628">Learning: reflections</text>
+  <rect class="chip" x="688" y="608" width="208" height="30" rx="8"/>
+  <text class="chip-text" x="700" y="628">Memory: recipes + strategy</text>
+
+  <text class="footer" x="68" y="662">Ralph stays deterministic by keeping state explicit on disk rather than hidden in long chat context.</text>
+
+  <rect x="926" y="604" width="276" height="74" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+  <circle cx="948" cy="626" r="6" fill="#334155"/>
+  <text class="legend" x="962" y="631">Core flow</text>
+  <circle cx="948" cy="648" r="6" fill="#0f766e"/>
+  <text class="legend" x="962" y="653">Learning loop-back</text>
+  <circle cx="1088" cy="626" r="6" fill="#b45309"/>
+  <text class="legend" x="1102" y="631">Checkpoint path</text>
+  <circle cx="1088" cy="648" r="6" fill="#64748b"/>
+  <text class="legend" x="1102" y="653">Artifact links</text>
 </svg>
