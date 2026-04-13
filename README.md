@@ -8,6 +8,16 @@ Ralph is a single-agent, multi-iteration loop: it works through one PRD story at
 
 With respect to Geoffrey Huntley, who originated the Ralph / Ralph Wiggum loop concept. If you want the original framing, start with [how-to-ralph-wiggum](https://github.com/ghuntley/how-to-ralph-wiggum).
 
+## Memory, Learning, And Checkpoints
+
+Ralph keeps process state on disk so runs can resume cleanly and be audited after the fact.
+
+- Main checkpoint state lives in `.agents/tasks/prd.json`: story status (`open`, `in_progress`, `done`) is the source of truth for resume behavior.
+- Per-iteration artifacts are written under `.ralph/runs/`: `run-*-iter-*.log`, `run-*-iter-*.md`, `run-*-iter-*.metrics.json`, and `run-*-iter-*.reflection.json`.
+- Learning artifacts live under `.ralph/knowledge/`: trusted recovery and verification recipes in `recipes/*.json`, plus aggregate strategy outcomes in `strategy-stats.json`.
+- Operational sidecars live in `.ralph/`: `progress.md`, `activity.log`, `errors.log`, `guardrails.md`, and process manifests in `processes/*.json` for cleanup and stale-process handling.
+- Prompt injection from progress, recipe, and strategy memory is capped so learning stays useful without unbounded context growth.
+
 ## Not Vanilla Ralph
 
 This fork intentionally incorporates ideas learned from GSD and lean-ctx work rather than staying as a stock Ralph loop.

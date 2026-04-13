@@ -11,6 +11,17 @@ Ralph is a file-based, single-agent loop.
 - loop state, logs, and run history live under `.ralph/`
 - each new iteration starts from the current repo plus compact on-disk learned state rather than one long chat context
 
+## Memory, Learning, And Checkpoints
+
+Ralph checkpointing is file-first, not hidden chat/session state.
+
+- checkpoint source of truth: `.agents/tasks/prd.json` story status (`open`, `in_progress`, `done`)
+- stale recovery: stories stuck in `in_progress` past `STALE_SECONDS` are reopened on the next run
+- run artifacts: `.ralph/runs/run-*-iter-*.log` (raw), `.md` (summary), `.metrics.json` (timing/tokens/context sizes), `.reflection.json` (structured outcome and reuse hints)
+- learning artifacts: `.ralph/knowledge/recipes/*.json` (promoted trusted recipes) and `.ralph/knowledge/strategy-stats.json` (strategy success/failure memory)
+- operational artifacts: `.ralph/progress.md`, `.ralph/activity.log`, `.ralph/errors.log`, `.ralph/guardrails.md`, and `.ralph/processes/*.json` manifests for process cleanup
+- context discipline: progress, recipe, and strategy memory are injected with byte and count caps so learning stays compact
+
 ## Backpressure And AGENTS
 
 Ralph works better when the repo pushes back clearly.
