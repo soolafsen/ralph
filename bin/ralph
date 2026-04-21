@@ -35,6 +35,20 @@ function exists(p) {
   }
 }
 
+function normalizedPath(p) {
+  let resolved;
+  try {
+    resolved = fs.realpathSync.native(p);
+  } catch {
+    resolved = path.resolve(p);
+  }
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function samePath(a, b) {
+  return normalizedPath(a) === normalizedPath(b);
+}
+
 function stripUtf8Bom(text) {
   return String(text || "").replace(/^\uFEFF/, "");
 }
@@ -620,7 +634,10 @@ async function main() {
   }
 
   if (cmd === "install") {
-    if (exists(localDir) && !installForce) {
+    const installingBundledTemplatesInPlace = samePath(globalDir, localDir);
+    if (installingBundledTemplatesInPlace) {
+      console.log(`.agents/ralph is already the bundled template directory at ${localDir}. Skipping templates.`);
+    } else if (exists(localDir) && !installForce) {
       console.log(`.agents/ralph already exists at ${localDir}. Skipping templates.`);
     } else {
       if (!exists(globalDir)) {
@@ -634,7 +651,7 @@ async function main() {
     const readmeSrc = path.join(repoRoot, "README.md");
     const diagramSrc = path.join(repoRoot, "diagram.svg");
     const imageSrc = path.join(repoRoot, "ralph.webp");
-    if (exists(localDir)) {
+    if (exists(localDir) && !installingBundledTemplatesInPlace) {
       const readmeDst = path.join(localDir, "README.md");
       const diagramDst = path.join(localDir, "diagram.svg");
       const imageDst = path.join(localDir, "ralph.webp");
@@ -644,6 +661,8 @@ async function main() {
     }
     if (installSkills) {
       await runInstallSkills();
+    } else if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      console.log("Skipped skills install. Re-run with --skills to install bundled skills.");
     } else {
       const { confirm, isCancel } = await import("@clack/prompts");
       const wantsSkills = await confirm({
@@ -931,10 +950,18 @@ async function main() {
     const promptFile = path.join(os.tmpdir(), `ralph-ping-${Date.now()}.txt`);
     fs.writeFileSync(promptFile, "Reply with <end>pong</end> only.");
     const escapePath = (value) => `'${String(value).replace(/'/g, "'\\''")}'`;
-    const rendered = agentCmd.includes("{prompt}")
+    const usesPromptPath = agentCmd.includes("{prompt}");
+    const rendered = usesPromptPath
       ? agentCmd.replace(/\{prompt\}/g, escapePath(promptFile))
-      : `cat ${escapePath(promptFile)} | ${agentCmd}`;
-    const result = spawnSync(rendered, withWindowsHide({ shell: true, encoding: "utf-8" }));
+      : agentCmd;
+    const result = spawnSync(
+      rendered,
+      withWindowsHide({
+        shell: true,
+        encoding: "utf-8",
+        input: usesPromptPath ? undefined : fs.readFileSync(promptFile, "utf-8"),
+      }),
+    );
     const output = `${result.stdout || ""}${result.stderr || ""}`;
     if (!output.includes("<end>pong</end>")) {
       console.error("Ping failed: missing <end>pong</end>.");
