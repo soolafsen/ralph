@@ -8,6 +8,12 @@ Ralph is a single-agent, multi-iteration loop: it works through one PRD story at
 
 With respect to Geoffrey Huntley, who originated the Ralph / Ralph Wiggum loop concept. If you want the original framing, start with [how-to-ralph-wiggum](https://github.com/ghuntley/how-to-ralph-wiggum).
 
+## Why Controlled Loops Matter
+
+For long-running AI work, an end user has little direct leverage over model behavior, and changing it is the hardest path. Context is the fastest useful lever, but it remains probabilistic. Ralph moves the critical controls into a harness: checkpoints, logs, budgets, verification, and resume state that turn fresh model runs into a more predictable loop.
+
+<img src="docs/assets/control-surfaces-quadrant.svg" alt="Quadrant graph showing model as hard to control, context as easy but non-deterministic, and harness as higher-control deterministic guardrails" width="100%" />
+
 ## Memory, Learning, And Checkpoints
 
 Ralph keeps process state on disk so runs can resume cleanly and be audited after the fact.
