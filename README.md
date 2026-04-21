@@ -10,9 +10,9 @@ With respect to Geoffrey Huntley, who originated the Ralph / Ralph Wiggum loop c
 
 ## Why Controlled Loops Matter
 
-For long-running AI work, an end user has little direct leverage over model behavior, and changing it is the hardest path. Context is the fastest useful lever, but it remains probabilistic. Ralph moves the critical controls into a harness: checkpoints, logs, budgets, verification, and resume state that turn fresh model runs into a more predictable loop.
+For long-running AI work, an end user has little direct leverage or control over model behavior. Context is a powerful lever, but it remains probabilistic. Ralph moves the critical controls into a harness: checkpoints, logs, budgets, verification, and resume state that turn fresh model runs into a more predictable loop.
 
-<img src="docs/assets/control-surfaces-quadrant.svg" alt="Quadrant graph showing model as hard to control, context as easy but non-deterministic, and harness as higher-control deterministic guardrails" width="100%" />
+<img src="docs/assets/leverage-vs-control.svg" alt="Quadrant graph showing model as low leverage and low control, context as high leverage but non-deterministic, and harness as high leverage with deterministic control" width="100%" />
 
 ## Memory, Learning, And Checkpoints
 
