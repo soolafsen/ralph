@@ -581,7 +581,7 @@ async function runInstallSkills() {
             ? path.join(home, ".local", "share", "opencode", "skills")
             : path.join(cwd, ".opencode", "skills");
 
-  const skillsToInstall = ["commit", "dev-browser"];
+  const skillsToInstall = [];
   fs.mkdirSync(targetRoot, { recursive: true });
   const installed = [];
   const skipped = [];
@@ -659,22 +659,7 @@ async function main() {
       if (exists(diagramSrc)) fs.copyFileSync(diagramSrc, diagramDst);
       if (exists(imageSrc)) fs.copyFileSync(imageSrc, imageDst);
     }
-    if (installSkills) {
-      await runInstallSkills();
-    } else if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      console.log("Skipped skills install. Re-run with --skills to install bundled skills.");
-    } else {
-      const { confirm, isCancel } = await import("@clack/prompts");
-      const wantsSkills = await confirm({
-        message: "Install skills (commit + dev-browser)?",
-        initialValue: true,
-      });
-      if (isCancel(wantsSkills)) {
-        console.log("Skipped skills install.");
-      } else if (wantsSkills) {
-        await runInstallSkills();
-      }
-    }
+    console.log("No bundled skills are available to install.");
     process.exit(0);
   }
 
